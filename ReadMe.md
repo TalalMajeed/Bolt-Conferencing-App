@@ -1,6 +1,6 @@
-# Bolt - Communication App
+# Bolt - Conferencing App
 
-A Web based Communication App having features such as live chat & the ability to host meetings. This Repository contains the Full Code (Frontend + Backend) of the Project.
+A Web based Conferencing App having features such as live chat & the ability to host meetings. This Repository contains the Full Code (Frontend + Backend) of the Project.
 
 ## Collaborators:
 
@@ -22,7 +22,7 @@ This project has the following software requirements:
 ### Local Frontend Setup:
 
 1. Clone the Repository:  
-   `https://github.com/TalalMajeed/Bolt-Communication`
+   `https://github.com/TalalMajeed/Bolt-Conferencing-App`
 
 2. Go to the Frontend Folder
 
