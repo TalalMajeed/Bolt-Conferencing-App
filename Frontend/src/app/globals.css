@@ -23,9 +23,20 @@ body {
     background-color: #1b1d1f;
     color: #ffffff;
     border: none !important;
+    
 }
 
 .ant-btn:hover {
     background-color: #565252 !important;
     color: white !important;
+}
+.ant-Input{
+    color: #1b1d1f;
+    border: 1px solid #1b1d1f;
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+.ant-Input:hover{
+    color: #1b1d1f;
+    border: 1px solid black;
 }
