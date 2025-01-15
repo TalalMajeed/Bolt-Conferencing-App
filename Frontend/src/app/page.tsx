@@ -10,7 +10,7 @@ const { Title, Text } = Typography;
 export default function Home() {
     return (
         <Layout className="min-h-screen bg-white font-sans">
-            <Header className="bg-white flex items-center p-4 sm:p-6 m-3">
+            <Header className="bg-white flex items-center md:justify-start justify-center p-4 sm:p-6 m-3">
                 <img src="/image.png" className="w-[150px]" alt="Bolt Logo" />
             </Header>
             <Content className="py-[150px]">
@@ -27,7 +27,8 @@ export default function Home() {
                         <Button
                             size="large"
                             icon={<VideoCameraOutlined />}
-                            className="mt-6 bg-[#1b1d1f] text-white hover:bg-[#f0f0f0] hover:text-[#1b1d1f] border-none rounded-full"
+                            type="primary"
+                            className="mt-6 border-none rounded-full"
                         >
                             Join a Meeting
                         </Button>
