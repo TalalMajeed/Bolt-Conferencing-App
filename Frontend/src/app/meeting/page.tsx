@@ -1,13 +1,9 @@
 "use client";
 
 import { Layout, Typography, Button, Input } from "antd";
-import {
-    VideoCameraOutlined,
-    AudioOutlined,
-    CameraOutlined,
-} from "@ant-design/icons";
+import { VideoCameraOutlined, AudioOutlined, CameraOutlined } from "@ant-design/icons";
 import { useState, useRef } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const { Header, Content, Footer } = Layout;
 const { Title, Text } = Typography;
@@ -21,9 +17,16 @@ export default function Meeting() {
     const [isMicAllowed, setIsMicAllowed] = useState(true);
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    const router = useRouter();
 
     const handleJoin = () => {
-        alert(`Joining meeting with ID: ${meetingId} and Name: ${name}`);
+        if (meetingId.trim() && name.trim()) {
+            const audioEnabled = isMicOn;
+            const videoEnabled = isCameraOn;
+            router.push(`/MeetingRoom/${meetingId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}`);
+        } else {
+            alert("Please enter both your name and meeting ID.");
+        }
     };
 
     const toggleCamera = async () => {
@@ -38,9 +41,7 @@ export default function Meeting() {
             setIsCameraOn(false);
         } else {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     videoRef.current.play();
@@ -59,9 +60,7 @@ export default function Meeting() {
             setIsMicOn(false);
         } else {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach((track) => track.stop());
                 setIsMicOn(true);
                 setIsMicAllowed(true);
@@ -85,7 +84,8 @@ export default function Meeting() {
                 className="h-full px-4 py-8 overflow-y-auto"
                 style={{ maxHeight: "calc(100vh - 120px)" }}
             >
-                <div className="h-full flex flex-col md:flex-row items-center justify-center gap:6 md:gap-12">
+                <div className="h-full flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12">
+                    {/* Video Preview Section */}
                     <div className="flex flex-col items-center justify-center gap-3 flex-1 max-w-[330px] md:max-w-[400px] w-[100%]">
                         <div className="w-[100%] h-[300px] bg-gray-300 rounded-lg flex items-center justify-center">
                             <video
@@ -106,6 +106,7 @@ export default function Meeting() {
                                 Video Preview
                             </div>
                         </div>
+                        {/* Controls */}
                         <div className="flex gap-4 justify-center md:justify-start">
                             <Button
                                 type="primary"
@@ -137,6 +138,8 @@ export default function Meeting() {
                             />
                         </div>
                     </div>
+
+                    {/* Meeting Join Section */}
                     <div className="flex flex-col items-center justify-center max-w-[400px] flex-1">
                         <Title
                             level={2}
