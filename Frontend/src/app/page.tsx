@@ -5,7 +5,7 @@ import { VideoCameraOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
 const { Header, Content, Footer } = Layout;
-const { Title, Text } = Typography;
+const {Text } = Typography;
 
 export default function Home() {
     return (
@@ -20,7 +20,7 @@ export default function Home() {
                     </h1>
                     <Text className="text-[#1b1d1f] text-lg sm:text-xl max-w-[700px] leading-10">
                         Connect seamlessly and collaborate effectively. Whether
-                        it's a team meeting or a virtual hangout, Bolt makes
+                        it is a team meeting or a virtual hangout, Bolt makes
                         video conferencing simple and engaging.
                     </Text>
                     <Link href="/meeting">
