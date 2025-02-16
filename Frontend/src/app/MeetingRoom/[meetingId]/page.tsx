@@ -1,236 +1,188 @@
 "use client";
+import { Layout, Button, Row, Col } from "antd";
+import {
+    VideoCameraOutlined,
+    AudioOutlined,
+    MessageOutlined,
+    PhoneFilled, CloseOutlined,
+    AudioMutedOutlined,
+    TeamOutlined
+} from "@ant-design/icons";
+import React, { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
-import { useState, useEffect, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { AudioOutlined, VideoCameraOutlined, MessageOutlined, CloseOutlined } from "@ant-design/icons";
-import Link from "next/link";
+const { Header, Content } = Layout;
 
-export default function MeetingRoom({ params }: { params: { meetingId: string } }) {
-    const { meetingId } = params;
+function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     const searchParams = useSearchParams();
-    const router = useRouter();
-
-    const audioEnabled = searchParams.get("audio") === "true";
-    const videoEnabled = searchParams.get("video") === "true";
-    const userName = searchParams.get("name") || "You";
-
-    const [isMicOn, setIsMicOn] = useState(audioEnabled);
-    const [isCameraOn, setIsCameraOn] = useState(videoEnabled);
-
-    const localVideoRef = useRef<HTMLVideoElement>(null);
-
-    const [participants, setParticipants] = useState([
-        { id: meetingId, name: userName, video: videoEnabled, audio: audioEnabled },
-    ]);
-
+    const username = searchParams.get("name");
+    const [isCameraOn, setIsCameraOn] = useState(searchParams.get("video") === "true");
+    const [isMicOn, setIsMicOn] = useState(searchParams.get("audio") === "true");
+    
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState("");
-
-    const [isChatOpen, setIsChatOpen] = useState(false);
-
-    useEffect(() => {
-        if (videoEnabled && localVideoRef.current) {
-            navigator.mediaDevices
-                .getUserMedia({ video: true })
-                .then((stream) => {
-                    if (localVideoRef.current) {
-                        localVideoRef.current.srcObject = stream;
-                        localVideoRef.current.play();
-                    }
-                })
-                .catch((error) => {
-                    console.error("Error accessing camera:", error);
-                });
-        }
-
-        return () => {
-            if (localVideoRef.current?.srcObject) {
-                const tracks = (localVideoRef.current.srcObject as MediaStream).getTracks();
-                tracks.forEach((track) => track.stop());
-                localVideoRef.current.srcObject = null;
+    
+    const [activeSidebar, setActiveSidebar] = useState(null);
+    
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const audioStreamRef = useRef<MediaStream | null>(null);
+    
+    const [participants, setParticipants] = useState([{ name: username, videoOn: isCameraOn, audioOn: isMicOn }]);
+    
+    const toggleSidebar = (type) => {
+        setActiveSidebar((prev) => (prev === type ? null : type));
+    };
+    
+    const toggleCamera = async () => {
+        if (isCameraOn) {
+            if (videoRef.current) {
+                const stream = videoRef.current.srcObject as MediaStream;
+                stream?.getTracks().forEach((track) => track.stop());
+                videoRef.current.srcObject = null;
             }
-        };
-    }, [videoEnabled]);
-
-    const toggleMicrophone = () => {
-        setIsMicOn((prev) => !prev);
-    };
-
-    const toggleCamera = () => {
-        if (isCameraOn && localVideoRef.current?.srcObject) {
-            const stream = localVideoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach((track) => track.stop());
-            localVideoRef.current.srcObject = null;
+            setIsCameraOn(false);
         } else {
-            navigator.mediaDevices
-                .getUserMedia({ video: true })
-                .then((stream) => {
-                    if (localVideoRef.current) {
-                        localVideoRef.current.srcObject = stream;
-                        localVideoRef.current.play();
-                    }
-                })
-                .catch((error) => {
-                    console.error("Error accessing camera:", error);
-                });
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+                setIsCameraOn(true);
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+            }
         }
-        setIsCameraOn((prev) => !prev);
     };
 
-    const toggleChat = () => {
-        setIsChatOpen((prev) => !prev);
+    const toggleMicrophone = async () => {
+        if (isMicOn) {
+            audioStreamRef.current?.getTracks().forEach(track => track.stop());
+            audioStreamRef.current = null;
+            setIsMicOn(false);
+        } else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioStreamRef.current = stream;
+                setIsMicOn(true);
+            } catch (error) {
+                console.error("Error accessing microphone:", error);
+            }
+        }
     };
 
     const sendMessage = () => {
         if (newMessage.trim() === "") return;
-        setMessages((prev) => [...prev, { sender: userName, text: newMessage }]);
+        setMessages((prev) => [...prev, { sender: username, text: newMessage }]);
         setNewMessage("");
     };
 
-    const leaveMeeting = (participantId: string) => {
-        setParticipants((prev) => prev.filter((participant) => participant.id !== participantId));
-    };
-
     return (
-        <div className="flex flex-col min-h-screen bg-gray-900 text-white overflow-hidden">
-            {/* Top Bar */}
-            <header className="flex items-center justify-between p-4 bg-gray-800">
-                <h1 className="text-lg font-bold">Meeting Room: {meetingId}</h1>
-                <Link href="/meeting">
-                    <button
-                        onClick={() => leaveMeeting(meetingId)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
-                    >
-                        Leave Meeting
-                    </button>
-                </Link>
-            </header>
+        <Layout className="h-screen bg-[#ffffff] font-sans flex flex-col">
+            <Header className="flex items-center justify-between px-6 bg-white shadow-md">
+                <img src="/image.png" className="w-[120px] sm:w-[150px]" alt="Bolt Logo" />
+            </Header>
             <div className="flex flex-1">
-                <div
-                    className={`flex-1 grid gap-4 p-4 ${participants.length === 1
-                        ? "grid-cols-1"
-                        : participants.length <= 4
-                            ? "grid-cols-2"
-                            : "grid-cols-3"
-                        } max-h-screen overflow-y-auto`}
-                >
-                    {participants.map((participant) => (
-                        <div
-                            key={participant.id}
-                            className="relative aspect-w-16 aspect-h-9 rounded overflow-hidden"
-                        >
-                            {/* Video Element */}
-                            {participant.name === userName && isCameraOn ? (
-                                <video
-                                    ref={localVideoRef}
-                                    className="absolute inset-0 w-full h-full object-cover"
-                                    muted
-                                ></video>
-                            ) : participant.video ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-gray-700">
-                                    <span className="text-gray-300">Video Placeholder</span>
+                <Content className="flex justify-center items-center py-4 mx-4">
+                    <Row gutter={[16, 16]} justify="center" className="w-full h-full">
+                        {participants.map((participant, index) => (
+                            <Col key={index} span={24 / Math.min(3, participants.length)} className="p-2">
+                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg shadow-md">
+                                    {participant.videoOn ? (
+                                        <video
+                                            ref={participant.name === username ? videoRef : null}
+                                            autoPlay
+                                            playsInline
+                                            className="rounded-lg h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <span className="text-gray-700 font-medium">{participant.name}</span>
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="absolute inset-0 flex items-center justify-center bg-gray-700">
-                                    <span className="text-gray-300">Video is Off</span>
-                                </div>
-                            )}
-                            <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-sm px-2 py-1 rounded">
-                                {participant.name}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div
-                    className={`flex flex-col border-l border-gray-700 transition-all duration-300 ${isChatOpen ? "w-[350px]" : "w-0"
-                        } overflow-hidden`}
-                >
-
-                    <div className="p-4 flex items-center justify-between bg-gray-800">
-                        <h2 className="font-bold text-lg">Chat</h2>
-                        <button
-                            className="text-gray-400 hover:text-white"
-                            onClick={toggleChat}
-                        >
-                            <CloseOutlined />
-                        </button>
-                    </div>
-
-                    <div
-                        className="flex-1 p-4 overflow-y-auto"
-                        style={{
-                            maxHeight: "calc(100vh - 112px)",
-                        }}
-                    >
-                        {messages.length > 0 ? (
-                            messages.map((message, index) => (
-                                <div
-                                    key={index}
-                                    className={`w-fit p-2 rounded-lg ${message.sender === userName
-                                            ? "bg-blue-500 text-white self-end"
-                                            : "bg-gray-700 text-gray-200"
-                                        }`}
-                                    style={{
-                                        maxWidth: "80%",
-                                        wordWrap: "break-word",
-                                    }}
-                                >
-                                    <p className="text-sm font-bold">{message.sender}</p>
-                                    <p className="text-sm">{message.text}</p>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-gray-400">No messages yet...</p>
-                        )}
-                    </div>
-                    <div className="p-4 border-t border-gray-700 bg-gray-800">
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                className="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg outline-none"
-                                placeholder="Type your message..."
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                            />
-                            <button
-                                onClick={sendMessage}
-                                className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg"
-                            >
-                                Send
+                            </Col>
+                        ))}
+                    </Row>
+                </Content>
+                {activeSidebar === "chat" && (
+                    <div className="flex flex-col w-[350px] border-l bg-white">
+                        <div className="p-4 flex items-center justify-between border-b">
+                            <h2 className="font-bold text-lg">Chat</h2>
+                            <button className="text-gray-400 hover:text-black" onClick={() => toggleSidebar("chat")}>
+                                <CloseOutlined />
                             </button>
                         </div>
+                        <div className="flex-1 p-4 overflow-y-auto">
+                            {messages.length > 0 ? (
+                                messages.map((message, index) => (
+                                    <div key={index} className={`w-fit p-2 rounded-lg mb-2 ${message.sender === username ? "bg-blue-500 text-white" : "bg-gray-700 text-gray-200"}`}>
+                                        <p className="text-sm font-bold">{message.sender}</p>
+                                        <p className="text-sm">{message.text}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-gray-600">No messages yet...</p>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
+                {activeSidebar === "participants" && (
+                    <div className="flex flex-col w-[350px] border-l bg-white p-4">
+                        <h2 className="font-bold text-lg mb-2">Participants</h2>
+                        {participants.map((participant, index) => (
+                            <p key={index} className="text-gray-700 border-b py-2">{participant.name}</p>
+                        ))}
+                    </div>
+                )}
             </div>
-
-            <footer className="flex justify-center items-center gap-4 p-4 bg-gray-800">
-                <button
+            <div className="flex justify-center items-center gap-6 bg-white shadow-lg p-4">
+                <Button
+                    type="primary"
+                    shape="circle"
+                    size="large"
+                    icon={<AudioOutlined />}
+                    className={
+                        isMicOn
+                            ? "bg-blue-600" : "bg-gray-600"
+                    }
                     onClick={toggleMicrophone}
-                    className={`w-12 h-12 flex items-center justify-center rounded-full text-white ${isMicOn ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
-                        }`}
-                >
-                    <AudioOutlined />
-                </button>
-                <button
+                />
+                <Button
+                    shape="circle"
+                    size="large"
+                    type="primary"
+                    icon={<VideoCameraOutlined />}
+                    className={
+                        isCameraOn?
+                            "bg-blue-600" : "bg-gray-600"
+                    }
                     onClick={toggleCamera}
-                    className={`w-12 h-12 flex items-center justify-center rounded-full text-white ${isCameraOn
-                        ? "bg-green-600 hover:bg-green-700"
-                        : "bg-red-600 hover:bg-red-700"
-                        }`}
-                >
-                    <VideoCameraOutlined />
-                </button>
-                <button
-                    onClick={toggleChat}
-                    className={`w-12 h-12 flex items-center justify-center rounded-full text-white ${isChatOpen
-                        ? "bg-yellow-600 hover:bg-yellow-700"
-                        : "bg-gray-600 hover:bg-gray-700"
-                        }`}
-                >
-                    <MessageOutlined />
-                </button>
-            </footer>
-        </div>
+                />
+                <Button
+                    shape="circle"
+                    size="large"
+                    type="primary"
+                    icon={<MessageOutlined />}
+                    className={activeSidebar === "chat" ? "bg-blue-600" : "bg-gray-600"}
+                    onClick={() => toggleSidebar("chat")}
+                />
+                <Button
+                    shape="circle"
+                    size="large"
+                    type="primary"
+                    icon={< TeamOutlined/>}
+                    className={activeSidebar === "participant" ? "bg-blue-600" : "bg-gray-600"}
+                    onClick={() => toggleSidebar("participants")}
+                />
+                <Button
+                    shape="circle"
+                    size="large"
+                    type="primary"
+                    icon={<PhoneFilled />}
+                    onClick={() => window.location.href = "/"}
+                    className="bg-red-600 hover:bg-red-500"
+                />
+            </div>
+        </Layout>
     );
 }
+
+export default MeetingRoom;

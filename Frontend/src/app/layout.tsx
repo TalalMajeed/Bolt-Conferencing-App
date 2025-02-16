@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConfigProvider } from "antd";
 import "@ant-design/v5-patch-for-react-19";
+import favicon from "../../public/favicon.ico";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -35,6 +36,7 @@ export default function RootLayout({
             <html lang="en">
                 <head>
                     <title>Bolt | Conferencing</title>
+                    <link rel="icon" href="favicon" />
                 </head>
                 <body
                     className={`${geistSans.variable} ${geistMono.variable} antialiased`}

@@ -9,7 +9,7 @@ const {Text } = Typography;
 
 export default function Home() {
     return (
-        <Layout className="min-h-screen bg-white font-sans">
+        <Layout className="max-h-screen bg-white font-sans">
             <Header className="bg-white flex items-center md:justify-start justify-center p-4 sm:p-6 m-3">
                 <img src="/image.png" className="w-[150px]" alt="Bolt Logo" />
             </Header>
