@@ -41,10 +41,10 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
+    const videoStreamRef = useRef<MediaStream | null>(null);
 
     const [participants, setParticipants] = useState<Participant[]>([
         { name: username, videoOn: isCameraOn, audioOn: isMicOn },
-        { name: "John Doe", videoOn: false, audioOn: true },
     ]);
 
     // Function to get grid layout based on number of participants
@@ -99,12 +99,16 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
 
     const toggleCamera = async () => {
         if (isCameraOn) {
-            const stream = videoRef.current?.srcObject;
-            if (stream instanceof MediaStream) {
-                stream.getTracks().forEach((track) => track.stop());
-                if (videoRef.current) {
-                    videoRef.current.srcObject = null;
-                }
+            // Stop all video tracks
+            if (videoStreamRef.current) {
+                videoStreamRef.current
+                    .getTracks()
+                    .forEach((track) => track.stop());
+                videoStreamRef.current = null;
+            }
+            // Clear video element
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
             }
             setIsCameraOn(false);
             // Update participants state
@@ -118,6 +122,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                 });
+                videoStreamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     videoRef.current.play();
@@ -175,6 +180,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                     const stream = await navigator.mediaDevices.getUserMedia({
                         video: true,
                     });
+                    videoStreamRef.current = stream;
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
                         videoRef.current.play();
@@ -221,6 +227,30 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
             videoRef.current.autoplay = true;
         }
     }, [isCameraOn]);
+
+    // Cleanup function to stop all media streams when component unmounts
+    useEffect(() => {
+        return () => {
+            // Stop video stream
+            if (videoStreamRef.current) {
+                videoStreamRef.current
+                    .getTracks()
+                    .forEach((track) => track.stop());
+                videoStreamRef.current = null;
+            }
+            // Stop audio stream
+            if (audioStreamRef.current) {
+                audioStreamRef.current
+                    .getTracks()
+                    .forEach((track) => track.stop());
+                audioStreamRef.current = null;
+            }
+            // Clear video element
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        };
+    }, []);
 
     const sendMessage = () => {
         if (newMessage.trim() === "") return;
