@@ -149,9 +149,9 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
     };
 
     return (
-        <div className="h-screen bg-[#ffffff] font-sans flex flex-col">
+        <div className="h-screen bg-[#f8f9fa] font-sans flex flex-col">
             {/* Header */}
-            <header className="flex items-center justify-between px-6 bg-white shadow-md py-4">
+            <header className="flex items-center justify-between px-6 bg-white py-4 border-b border-gray-200">
                 <img
                     src="/image.png"
                     className="w-[120px] sm:w-[150px]"
@@ -169,7 +169,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                     >
                         {participants.map((participant, index) => (
                             <div key={index} className="p-2">
-                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg shadow-md overflow-hidden">
+                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg overflow-hidden">
                                     {participant.videoOn ? (
                                         <video
                                             ref={
@@ -300,7 +300,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
             </div>
 
             {/* Controls */}
-            <div className="flex justify-center items-center gap-6 bg-white shadow-lg p-4">
+            <div className="flex justify-center items-center gap-6 bg-white shadow-lg p-4 border-t border-gray-200">
                 <Button
                     variant="default"
                     size="icon"
