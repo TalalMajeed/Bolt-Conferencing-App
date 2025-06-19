@@ -44,6 +44,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
 
     const [participants, setParticipants] = useState<Participant[]>([
         { name: username, videoOn: isCameraOn, audioOn: isMicOn },
+        { name: "John Doe", videoOn: false, audioOn: true },
     ]);
 
     // Function to get grid layout based on number of participants
@@ -98,12 +99,20 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
 
     const toggleCamera = async () => {
         if (isCameraOn) {
-            if (videoRef.current) {
-                const stream = videoRef.current.srcObject as MediaStream;
-                stream?.getTracks().forEach((track) => track.stop());
-                videoRef.current.srcObject = null;
+            const stream = videoRef.current?.srcObject;
+            if (stream instanceof MediaStream) {
+                stream.getTracks().forEach((track) => track.stop());
+                if (videoRef.current) {
+                    videoRef.current.srcObject = null;
+                }
             }
             setIsCameraOn(false);
+            // Update participants state
+            setParticipants((prev) =>
+                prev.map((p) =>
+                    p.name === username ? { ...p, videoOn: false } : p
+                )
+            );
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -111,8 +120,15 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                 });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
+                    videoRef.current.play();
                 }
                 setIsCameraOn(true);
+                // Update participants state
+                setParticipants((prev) =>
+                    prev.map((p) =>
+                        p.name === username ? { ...p, videoOn: true } : p
+                    )
+                );
             } catch (error) {
                 console.error("Error accessing camera:", error);
             }
@@ -126,6 +142,12 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                 .forEach((track) => track.stop());
             audioStreamRef.current = null;
             setIsMicOn(false);
+            // Update participants state
+            setParticipants((prev) =>
+                prev.map((p) =>
+                    p.name === username ? { ...p, audioOn: false } : p
+                )
+            );
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -133,11 +155,72 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                 });
                 audioStreamRef.current = stream;
                 setIsMicOn(true);
+                // Update participants state
+                setParticipants((prev) =>
+                    prev.map((p) =>
+                        p.name === username ? { ...p, audioOn: true } : p
+                    )
+                );
             } catch (error) {
                 console.error("Error accessing microphone:", error);
             }
         }
     };
+
+    // Initialize camera and microphone on component mount
+    useEffect(() => {
+        const initializeMedia = async () => {
+            if (isCameraOn) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                    });
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                        videoRef.current.play();
+                        console.log("Video stream initialized successfully");
+                    }
+                } catch (error) {
+                    console.error("Error accessing camera:", error);
+                    setIsCameraOn(false);
+                    setParticipants((prev) =>
+                        prev.map((p) =>
+                            p.name === username ? { ...p, videoOn: false } : p
+                        )
+                    );
+                }
+            }
+
+            if (isMicOn) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: true,
+                    });
+                    audioStreamRef.current = stream;
+                } catch (error) {
+                    console.error("Error accessing microphone:", error);
+                    setIsMicOn(false);
+                    setParticipants((prev) =>
+                        prev.map((p) =>
+                            p.name === username ? { ...p, audioOn: false } : p
+                        )
+                    );
+                }
+            }
+        };
+
+        initializeMedia();
+    }, []);
+
+    // Handle video stream changes
+    useEffect(() => {
+        if (videoRef.current && isCameraOn) {
+            // Ensure video element is properly set up
+            videoRef.current.muted = true; // Mute to prevent feedback
+            videoRef.current.playsInline = true;
+            videoRef.current.autoplay = true;
+        }
+    }, [isCameraOn]);
 
     const sendMessage = () => {
         if (newMessage.trim() === "") return;
@@ -165,22 +248,57 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                     <div
                         className={`grid ${getGridLayout(
                             participants.length
-                        )} gap-4 ${getVideoContainerSize(participants.length)}`}
+                        )} gap-4 ${getVideoContainerSize(
+                            participants.length
+                        )} max-h-[calc(100vh-100px)] aspect-video overflow-hidden w-[800px] h-[600px]`}
                     >
                         {participants.map((participant, index) => (
-                            <div key={index} className="p-2">
-                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg overflow-hidden">
-                                    {participant.videoOn ? (
-                                        <video
-                                            ref={
-                                                participant.name === username
-                                                    ? videoRef
-                                                    : null
-                                            }
-                                            autoPlay
-                                            playsInline
-                                            className="rounded-lg h-full w-full object-cover"
-                                        />
+                            <div key={index} className="p-2 aspect-video">
+                                <div className="relative bg-gray-300 h-full w-full rounded-lg overflow-hidden">
+                                    {participant.name === username ? (
+                                        // Current user's video
+                                        <div className="w-full h-full relative overflow-hidden">
+                                            <video
+                                                ref={videoRef}
+                                                className="w-full h-full rounded-lg object-cover"
+                                                style={{
+                                                    display: isCameraOn
+                                                        ? "block"
+                                                        : "none",
+                                                }}
+                                                muted
+                                            />
+                                            <div
+                                                style={{
+                                                    display: isCameraOn
+                                                        ? "none"
+                                                        : "block",
+                                                }}
+                                                className="absolute inset-0 flex flex-col items-center justify-center"
+                                            >
+                                                <div className="flex flex-col items-center justify-center h-full">
+                                                    <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
+                                                        <span className="text-white text-xl font-bold">
+                                                            {participant.name
+                                                                ?.charAt(0)
+                                                                .toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-gray-700 font-medium text-center">
+                                                        {participant.name}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : // Other participants' video
+                                    participant.videoOn ? (
+                                        <div className="w-full h-full relative overflow-hidden">
+                                            <video
+                                                autoPlay
+                                                playsInline
+                                                className="w-full h-full rounded-lg object-cover"
+                                            />
+                                        </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full">
                                             <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
@@ -270,31 +388,109 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
 
                 {/* Participants Sidebar */}
                 {activeSidebar === "participants" && (
-                    <div className="flex flex-col w-[350px] border-l bg-white p-4">
-                        <div className="flex items-center justify-between border-b pb-2">
-                            <h2 className="font-bold text-lg">Participants</h2>
+                    <div className="flex flex-col w-[350px] border-l bg-white">
+                        <div className="p-4 flex items-center justify-between border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-5 w-5 text-gray-600" />
+                                <h2 className="font-bold text-lg text-gray-800">
+                                    Participants
+                                </h2>
+                                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+                                    {participants.length}
+                                </span>
+                            </div>
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-gray-400 hover:text-black"
+                                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                                 onClick={() => toggleSidebar("participants")}
                             >
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
-                        {participants.map((participant, index) => (
-                            <div
-                                key={index}
-                                className="text-gray-700 border-b py-2 flex items-center justify-between"
-                            >
-                                <span>{participant.name}</span>
-                                {participant.audioOn ? (
-                                    <Mic className="h-4 w-4" />
-                                ) : (
-                                    <MicOff className="h-4 w-4" />
-                                )}
-                            </div>
-                        ))}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {participants.map((participant, index) => (
+                                <div
+                                    key={index}
+                                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors duration-200 mb-2"
+                                >
+                                    {/* Participant Avatar */}
+                                    <div className="relative">
+                                        <div className="w-10 h-10 bg-gradient-to-br bg-gray-400 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                                            {participant.name
+                                                ?.charAt(0)
+                                                .toUpperCase()}
+                                        </div>
+                                        {/* Online Status Indicator */}
+                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                                    </div>
+
+                                    {/* Participant Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-gray-800 truncate">
+                                                {participant.name}
+                                            </span>
+                                            {participant.name === username && (
+                                                <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                                                    You
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {/* Video Status */}
+                                            <div
+                                                className={`flex items-center gap-1 text-xs ${
+                                                    participant.videoOn
+                                                        ? "text-green-600"
+                                                        : "text-gray-500"
+                                                }`}
+                                            >
+                                                <Video className="h-3 w-3" />
+                                                <span>
+                                                    {participant.videoOn
+                                                        ? "Video on"
+                                                        : "Video off"}
+                                                </span>
+                                            </div>
+
+                                            {/* Audio Status */}
+                                            <div
+                                                className={`flex items-center gap-1 text-xs ${
+                                                    participant.audioOn
+                                                        ? "text-green-600"
+                                                        : "text-red-500"
+                                                }`}
+                                            >
+                                                {participant.audioOn ? (
+                                                    <>
+                                                        <Mic className="h-3 w-3" />
+                                                        <span>Audio on</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <MicOff className="h-3 w-3" />
+                                                        <span>Audio off</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Status Icons */}
+                                    <div className="flex items-center gap-1">
+                                        {participant.videoOn && (
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        )}
+                                        {participant.audioOn ? (
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        ) : (
+                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
