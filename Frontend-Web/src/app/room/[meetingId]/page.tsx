@@ -334,12 +334,20 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                 {/* Chat Sidebar */}
                 {activeSidebar === "chat" && (
                     <div className="flex flex-col w-[350px] border-l bg-white">
-                        <div className="p-4 flex items-center justify-between border-b">
-                            <h2 className="font-bold text-lg">Chat</h2>
+                        <div className="p-4 flex items-center justify-between border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center gap-2">
+                                <MessageSquare className="h-5 w-5 text-gray-600" />
+                                <h2 className="font-bold text-lg text-gray-800">
+                                    Chat
+                                </h2>
+                                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+                                    {messages.length}
+                                </span>
+                            </div>
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-gray-400 hover:text-black"
+                                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                                 onClick={() => toggleSidebar("chat")}
                             >
                                 <X className="h-4 w-4" />
@@ -350,38 +358,97 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                                 messages.map((message, index) => (
                                     <div
                                         key={index}
-                                        className={`w-fit p-2 rounded-lg mb-2 ${
+                                        className={`mb-4 ${
                                             message.sender === username
-                                                ? "bg-blue-500 text-white"
-                                                : "bg-gray-700 text-gray-200"
+                                                ? "flex justify-end"
+                                                : "flex justify-start"
                                         }`}
                                     >
-                                        <p className="text-sm font-bold">
-                                            {message.sender}
-                                        </p>
-                                        <p className="text-sm">
-                                            {message.text}
-                                        </p>
+                                        <div
+                                            className={`max-w-[80%] ${
+                                                message.sender === username
+                                                    ? "bg-blue-500 text-white"
+                                                    : "bg-gray-100 text-gray-800"
+                                            } rounded-2xl px-4 py-3 shadow-sm`}
+                                        >
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div
+                                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                                                        message.sender ===
+                                                        username
+                                                            ? "bg-blue-400 text-white"
+                                                            : "bg-gray-300 text-gray-600"
+                                                    }`}
+                                                >
+                                                    {message.sender
+                                                        ?.charAt(0)
+                                                        .toUpperCase()}
+                                                </div>
+                                                <span
+                                                    className={`text-xs font-medium ${
+                                                        message.sender ===
+                                                        username
+                                                            ? "text-blue-100"
+                                                            : "text-gray-500"
+                                                    }`}
+                                                >
+                                                    {message.sender}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm leading-relaxed">
+                                                {message.text}
+                                            </p>
+                                        </div>
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-gray-600">
-                                    No messages yet...
-                                </p>
+                                <div className="flex flex-col items-center justify-center h-full text-center">
+                                    <MessageSquare className="h-12 w-12 text-gray-300 mb-4" />
+                                    <p className="text-gray-500 font-medium">
+                                        No messages yet
+                                    </p>
+                                    <p className="text-gray-400 text-sm mt-1">
+                                        Start the conversation!
+                                    </p>
+                                </div>
                             )}
                         </div>
-                        <div className="p-2 border-t flex gap-2">
-                            <Input
-                                type="text"
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                className="flex-1"
-                                placeholder="Type a message..."
-                                onKeyPress={(e) =>
-                                    e.key === "Enter" && sendMessage()
-                                }
-                            />
-                            <Button onClick={sendMessage}>Send</Button>
+                        <div className="p-4 border-t border-gray-200 bg-gray-50">
+                            <div className="flex gap-3">
+                                <div className="flex-1 relative">
+                                    <Input
+                                        type="text"
+                                        value={newMessage}
+                                        onChange={(e) =>
+                                            setNewMessage(e.target.value)
+                                        }
+                                        className="w-full pr-12 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-full"
+                                        placeholder="Type a message..."
+                                        onKeyPress={(e) =>
+                                            e.key === "Enter" && sendMessage()
+                                        }
+                                    />
+                                    <Button
+                                        onClick={sendMessage}
+                                        disabled={!newMessage.trim()}
+                                        className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 bg-blue-500 hover:bg-blue-600 text-white rounded-full disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                    >
+                                        <svg
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                                            />
+                                        </svg>
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
