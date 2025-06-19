@@ -22,7 +22,7 @@ export default function Meeting() {
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
             router.push(
-                `/MeetingRoom/${meetingId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}`
+                `/room/${meetingId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}`
             );
         } else {
             alert("Please enter both your name and meeting ID.");
@@ -158,7 +158,7 @@ export default function Meeting() {
 
                     {/* Meeting Join Section */}
                     <div className="flex flex-col items-center justify-center max-w-[400px] flex-1">
-                        <h2 className="text-[#00796b] text-xl md:text-2xl mb-4 font-semibold">
+                        <h2 className="text-xl md:text-2xl mb-4 font-semibold">
                             Join a Meeting
                         </h2>
                         <p className="text-[#1b1d1f] text-base md:text-lg mb-6 md:text-left">

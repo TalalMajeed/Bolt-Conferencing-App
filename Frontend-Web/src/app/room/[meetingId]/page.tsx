@@ -46,6 +46,52 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
         { name: username, videoOn: isCameraOn, audioOn: isMicOn },
     ]);
 
+    // Function to get grid layout based on number of participants
+    const getGridLayout = (participantCount: number) => {
+        switch (participantCount) {
+            case 1:
+                return "grid-cols-1";
+            case 2:
+                return "grid-cols-2";
+            case 3:
+                return "grid-cols-3";
+            case 4:
+                return "grid-cols-2";
+            case 5:
+            case 6:
+                return "grid-cols-3";
+            case 7:
+            case 8:
+            case 9:
+                return "grid-cols-3";
+            default:
+                return "grid-cols-4";
+        }
+    };
+
+    // Function to get video container size based on number of participants
+    const getVideoContainerSize = (participantCount: number) => {
+        switch (participantCount) {
+            case 1:
+                return "h-full w-full max-w-4xl mx-auto";
+            case 2:
+                return "h-full w-full";
+            case 3:
+                return "h-full w-full";
+            case 4:
+                return "h-full w-full";
+            case 5:
+            case 6:
+                return "h-full w-full";
+            case 7:
+            case 8:
+            case 9:
+                return "h-full w-full";
+            default:
+                return "h-full w-full";
+        }
+    };
+
     const toggleSidebar = (type: string) => {
         setActiveSidebar((prev) => (prev === type ? null : type));
     };
@@ -116,10 +162,14 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
             <div className="flex flex-1">
                 {/* Main Content */}
                 <main className="flex justify-center items-center py-4 mx-4 flex-1">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full h-full">
+                    <div
+                        className={`grid ${getGridLayout(
+                            participants.length
+                        )} gap-4 ${getVideoContainerSize(participants.length)}`}
+                    >
                         {participants.map((participant, index) => (
                             <div key={index} className="p-2">
-                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg shadow-md">
+                                <div className="relative bg-gray-300 h-full flex items-center justify-center rounded-lg shadow-md overflow-hidden">
                                     {participant.videoOn ? (
                                         <video
                                             ref={
@@ -132,10 +182,31 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                                             className="rounded-lg h-full w-full object-cover"
                                         />
                                     ) : (
-                                        <span className="text-gray-700 font-medium">
-                                            {participant.name}
-                                        </span>
+                                        <div className="flex flex-col items-center justify-center h-full">
+                                            <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
+                                                <span className="text-white text-xl font-bold">
+                                                    {participant.name
+                                                        ?.charAt(0)
+                                                        .toUpperCase()}
+                                                </span>
+                                            </div>
+                                            <span className="text-gray-700 font-medium text-center">
+                                                {participant.name}
+                                            </span>
+                                        </div>
                                     )}
+                                    {/* Audio indicator */}
+                                    <div className="absolute bottom-2 right-2">
+                                        {participant.audioOn ? (
+                                            <div className="bg-green-500 rounded-full p-1">
+                                                <Mic className="h-3 w-3 text-white" />
+                                            </div>
+                                        ) : (
+                                            <div className="bg-red-500 rounded-full p-1">
+                                                <MicOff className="h-3 w-3 text-white" />
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
