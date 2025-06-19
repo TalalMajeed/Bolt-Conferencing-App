@@ -1,43 +1,44 @@
 "use client";
 
-import { Layout, Typography, Button } from "antd";
-import { VideoCameraOutlined } from "@ant-design/icons";
+import { Button } from "@/components/ui/button";
+import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import Link from "next/link";
-
-const { Header, Content, Footer } = Layout;
-const {Text } = Typography;
 
 export default function Home() {
     return (
-        <Layout className="max-h-screen bg-white font-sans">
-            <Header className="bg-white flex items-center md:justify-start justify-center p-4 sm:p-6 m-3">
+        <div className="min-h-screen bg-white font-sans flex flex-col">
+            {/* Header */}
+            <header className="bg-white flex items-center md:justify-start justify-center p-4 sm:p-6 m-3">
                 <img src="/image.png" className="w-[150px]" alt="Bolt Logo" />
-            </Header>
-            <Content className="py-[150px]">
+            </header>
+
+            {/* Main Content */}
+            <main className="flex-1 flex items-center justify-center py-[150px]">
                 <div className="flex flex-col items-center justify-center gap-3 text-center">
                     <h1 className="text-[#1b1d1f] font-semibold text-3xl sm:text-5xl pb-2 sm:pb-4">
                         Welcome to Bolt
                     </h1>
-                    <Text className="text-[#1b1d1f] text-lg sm:text-xl max-w-[700px] leading-10">
+                    <p className="text-[#1b1d1f] text-lg sm:text-xl max-w-[700px] leading-10">
                         Connect seamlessly and collaborate effectively. Whether
                         it is a team meeting or a virtual hangout, Bolt makes
                         video conferencing simple and engaging.
-                    </Text>
+                    </p>
                     <Link href="/meeting">
                         <Button
-                            size="large"
-                            icon={<VideoCameraOutlined />}
-                            type="primary"
-                            className="mt-6 border-none rounded-full"
+                            size="lg"
+                            className="mt-6 bg-[#262626] hover:bg-[#404040] text-white rounded-full px-8 py-3 text-lg"
                         >
+                            <Video className="mr-2 h-5 w-5" />
                             Join a Meeting
                         </Button>
                     </Link>
                 </div>
-            </Content>
-            <Footer className="text-center bg-white text-[#1b1d1f] text-sm sm:text-base">
+            </main>
+
+            {/* Footer */}
+            <footer className="text-center bg-white text-[#1b1d1f] text-sm sm:text-base py-4">
                 Bolt ©2025 | All Rights Reserved
-            </Footer>
-        </Layout>
+            </footer>
+        </div>
     );
 }
