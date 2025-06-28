@@ -12,16 +12,43 @@ import {
 } from "lucide-react";
 import React, { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { io, Socket } from "socket.io-client";
 
 interface Participant {
-    name: string | null;
+    id: string;
+    name: string;
     videoOn: boolean;
     audioOn: boolean;
+    stream?: MediaStream;
+    peerConnection?: RTCPeerConnection;
 }
 
 interface Message {
     sender: string | null;
     text: string;
+}
+
+function RemoteVideo({ stream }: { stream?: MediaStream }) {
+    const ref = React.useRef<HTMLVideoElement>(null);
+    React.useEffect(() => {
+        if (!ref.current) return;
+        if (stream) {
+            ref.current.srcObject = stream;
+            ref.current.onloadedmetadata = () => {
+                ref.current?.play().catch(() => {});
+            };
+        } else {
+            ref.current.srcObject = null;
+        }
+    }, [stream]);
+    return (
+        <video
+            ref={ref}
+            autoPlay
+            playsInline
+            className="w-full h-full rounded-lg object-cover"
+        />
+    );
 }
 
 function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
@@ -47,50 +74,305 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     const videoStreamRef = useRef<MediaStream | null>(null);
 
     const [participants, setParticipants] = useState<Participant[]>([
-        { name: username, videoOn: isCameraOn, audioOn: isMicOn },
+        { id: searchParams.get("participantId") || "", name: username || "", videoOn: isCameraOn, audioOn: isMicOn },
     ]);
 
-    // Fetch room details and update participants
-    useEffect(() => {
-        const fetchRoomDetails = async () => {
-            try {
-                console.log('Fetching room details for:', resolvedParams.meetingId);
-                const response = await fetch(`http://localhost:5000/api/rooms/${resolvedParams.meetingId}`);
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch room details');
-                }
-                
-                const roomData = await response.json();
-                console.log('Room data received:', roomData);
-                
-                // Update room name
-                setRoomName(roomData.name);
-                
-                // Map participants from API response
-                const mappedParticipants = roomData.participants.map((p: { id: string; username: string; joinedAt: string }) => ({
-                    name: p.username,
-                    videoOn: p.username === username ? isCameraOn : false,
-                    audioOn: p.username === username ? isMicOn : false,
-                }));
-                
-                setParticipants(mappedParticipants);
-                setIsLoading(false);
-                console.log('Participants updated:', mappedParticipants);
-            } catch (error) {
-                console.error('Error fetching room details:', error);
-                setIsLoading(false);
-                // Keep current participants if fetch fails
+    // Socket.IO connection
+    const socketRef = useRef<Socket | null>(null);
+    const participantId = searchParams.get("participantId") || username || "";
+
+    // WebRTC configuration
+    const rtcConfiguration: RTCConfiguration = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    };
+
+    // WebRTC peer connections management
+    const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+    const localStreamRef = useRef<MediaStream | null>(null);
+
+    const pendingPeers = React.useRef<Set<string>>(new Set());
+
+    // Function to fetch room details (moved from useEffect for reuse)
+    const fetchRoomDetails = async () => {
+        try {
+            console.log('Fetching room details for:', resolvedParams.meetingId);
+            const response = await fetch(`http://localhost:5000/api/rooms/${resolvedParams.meetingId}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch room details');
+            }
+            
+            const roomData = await response.json();
+            console.log('Room data received:', roomData);
+            
+            // Update room name
+            setRoomName(roomData.name);
+            
+            // Map participants from API response
+            const mappedParticipants = roomData.participants.map((p: { 
+                id: string; 
+                username: string; 
+                joinedAt: string;
+                mediaState?: { audioOn: boolean; videoOn: boolean };
+            }) => ({
+                id: p.id,
+                name: p.username || "",
+                videoOn: p.username === username ? isCameraOn : (p.mediaState?.videoOn || false),
+                audioOn: p.username === username ? isMicOn : (p.mediaState?.audioOn || false),
+            }));
+            
+            // PATCH: Preserve runtime fields like stream
+            setParticipants((prev: Participant[]) => {
+                const prevById = new Map(prev.map((p: Participant) => [p.id, p]));
+                return mappedParticipants.map((p: Participant) => {
+                    const old = prevById.get(p.id);
+                    return old ? { ...old, ...p, stream: old.stream } : p;
+                });
+            });
+            setIsLoading(false);
+            console.log('Participants updated:', mappedParticipants);
+        } catch (error) {
+            console.error('Error fetching room details:', error);
+            setIsLoading(false);
+            // Keep current participants if fetch fails
+        }
+    };
+
+    // WebRTC Functions
+    const createPeerConnection = (targetParticipantId: string): RTCPeerConnection => {
+        const peerConnection = new RTCPeerConnection(rtcConfiguration);
+        
+        // Add local stream tracks to peer connection
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStreamRef.current!);
+            });
+        }
+
+        // Handle incoming streams
+        peerConnection.ontrack = (event) => {
+            console.log('Received remote stream from:', targetParticipantId);
+            setParticipants(prev => 
+                prev.map(p => 
+                    p.id === targetParticipantId 
+                        ? { ...p, stream: event.streams[0] }
+                        : p
+                )
+            );
+        };
+
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && socketRef.current) {
+                socketRef.current.emit('webrtc-signal', {
+                    type: 'ice-candidate',
+                    data: event.candidate,
+                    from: participantId,
+                    to: targetParticipantId
+                });
             }
         };
 
+        // 🔑  renegotiate automatically whenever we add a new track
+        peerConnection.onnegotiationneeded = async () => {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socketRef.current?.emit("webrtc-signal", {
+                    type: "offer",
+                    data: offer,
+                    from: participantId,
+                    to: targetParticipantId,
+                });
+            } catch (err) {
+                console.error("Renegotiation error:", err);
+            }
+        };
+
+        peerConnectionsRef.current.set(targetParticipantId, peerConnection);
+        return peerConnection;
+    };
+
+    const handleOffer = async (offer: RTCSessionDescriptionInit, fromParticipantId: string) => {
+        try {
+            const peerConnection = createPeerConnection(fromParticipantId);
+            await peerConnection.setRemoteDescription(offer);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            if (socketRef.current) {
+                socketRef.current.emit('webrtc-signal', {
+                    type: 'answer',
+                    data: answer,
+                    from: participantId,
+                    to: fromParticipantId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling offer:', error);
+        }
+    };
+
+    const handleAnswer = async (answer: RTCSessionDescriptionInit, fromParticipantId: string) => {
+        try {
+            const peerConnection = peerConnectionsRef.current.get(fromParticipantId);
+            if (peerConnection) {
+                // Only set remote answer if we are in the correct state
+                if (peerConnection.signalingState === 'have-local-offer') {
+                    await peerConnection.setRemoteDescription(answer);
+                } else {
+                    console.warn('Skipping setRemoteDescription(answer) due to invalid signaling state:', peerConnection.signalingState);
+                }
+            }
+        } catch (error) {
+            console.error('Error handling answer:', error);
+        }
+    };
+
+    const handleIceCandidate = async (candidate: RTCIceCandidateInit, fromParticipantId: string) => {
+        try {
+            const peerConnection = peerConnectionsRef.current.get(fromParticipantId);
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(candidate);
+            }
+        } catch (error) {
+            console.error('Error handling ICE candidate:', error);
+        }
+    };
+
+    const cleanupPeerConnection = (participantId: string) => {
+        const peerConnection = peerConnectionsRef.current.get(participantId);
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnectionsRef.current.delete(participantId);
+        }
+        
+        setParticipants(prev => 
+            prev.map(p => 
+                p.id === participantId 
+                    ? { ...p, stream: undefined }
+                    : p
+            )
+        );
+    };
+
+    // Initial fetch only (no polling)
+    useEffect(() => {
         fetchRoomDetails();
-        
-        // Set up interval to refresh room details every 5 seconds
-        const interval = setInterval(fetchRoomDetails, 5000);
-        
-        return () => clearInterval(interval);
     }, [resolvedParams.meetingId, username, isCameraOn, isMicOn]);
+
+    // Socket.IO connection and media state synchronization
+    useEffect(() => {
+        // Connect to Socket.IO server
+        socketRef.current = io("http://localhost:5000");
+
+        const socket = socketRef.current;
+
+        // Join the room
+        socket.emit("join-room", {
+            roomId: resolvedParams.meetingId,
+            participantId: participantId,
+            initialMediaState: {
+                audioOn: isMicOn,
+                videoOn: isCameraOn
+            }
+        });
+        
+        console.log("Joined room with participant ID:", participantId);
+        console.log("Initial media state:", { audioOn: isMicOn, videoOn: isCameraOn });
+
+        // Listen for media state changes from other participants
+        socket.on("media-state-changed", (data: {
+            participantId: string;
+            audioOn: boolean;
+            videoOn: boolean;
+            username: string;
+        }) => {
+            setParticipants(prev => 
+                prev.map(p => 
+                    p.id === data.participantId 
+                        ? { ...p, audioOn: data.audioOn, videoOn: data.videoOn }
+                        : p
+                )
+            );
+        });
+
+        // Listen for new user joining
+        socket.on("user-joined", (data: { participantId: string; socketId: string }) => {
+            console.log("New user joined:", data);
+            if (localStreamRef.current) {
+                createPeerConnection(data.participantId); // onnegotiationneeded fires
+            } else {
+                pendingPeers.current.add(data.participantId);
+            }
+            fetchRoomDetails();
+        });
+
+        // Listen for user leaving
+        socket.on("user-left", (data: { participantId: string; username: string }) => {
+            console.log("User left:", data);
+            // Cleanup peer connection
+            cleanupPeerConnection(data.participantId);
+            setParticipants(prev => prev.filter(p => p.id !== data.participantId));
+        });
+
+        // WebRTC signaling events
+        socket.on("webrtc-signal", (data: { type: string; data: RTCSessionDescriptionInit | RTCIceCandidateInit; from: string; to: string }) => {
+            console.log("Received WebRTC signal:", data);
+            
+            if (data.to === participantId) {
+                switch (data.type) {
+                    case 'offer':
+                        handleOffer(data.data as RTCSessionDescriptionInit, data.from);
+                        break;
+                    case 'answer':
+                        handleAnswer(data.data as RTCSessionDescriptionInit, data.from);
+                        break;
+                    case 'ice-candidate':
+                        handleIceCandidate(data.data as RTCIceCandidateInit, data.from);
+                        break;
+                }
+            }
+        });
+
+        // Request current media states from all participants
+        socket.emit("request-media-states", { roomId: resolvedParams.meetingId });
+
+        // Listen for media states response
+        socket.on("media-states-response", (data: { mediaStates: Array<{
+            participantId: string;
+            username: string;
+            audioOn: boolean;
+            videoOn: boolean;
+        }> }) => {
+            setParticipants(prev => {
+                const updated = [...prev];
+                data.mediaStates.forEach(state => {
+                    const existingIndex = updated.findIndex(p => p.id === state.participantId);
+                    if (existingIndex !== -1) {
+                        updated[existingIndex] = { ...updated[existingIndex], audioOn: state.audioOn, videoOn: state.videoOn };
+                    }
+                });
+                return updated;
+            });
+            
+            // Create peer connections for existing participants
+            data.mediaStates.forEach(state => {
+                if (state.participantId !== participantId) {
+                    createPeerConnection(state.participantId);
+                }
+            });
+        });
+
+        // Cleanup on unmount
+        return () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
+    }, [resolvedParams.meetingId, participantId]);
 
     // Function to get grid layout based on number of participants
     const getGridLayout = (participantCount: number) => {
@@ -155,6 +437,10 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
+            // Update local stream
+            if (localStreamRef.current) {
+                localStreamRef.current.getVideoTracks().forEach(track => track.stop());
+            }
             setIsCameraOn(false);
             // Update participants state
             setParticipants((prev) =>
@@ -162,11 +448,32 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                     p.name === username ? { ...p, videoOn: false } : p
                 )
             );
+            
+            // Emit media state change
+            if (socketRef.current) {
+                socketRef.current.emit("media-state-update", {
+                    participantId: participantId,
+                    audioOn: isMicOn,
+                    videoOn: false
+                });
+            }
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                 });
+                
+                if (localStreamRef.current) {
+                    stream.getVideoTracks().forEach(track => {
+                        localStreamRef.current!.addTrack(track);
+                        peerConnectionsRef.current.forEach(pc =>
+                            pc.addTrack(track, localStreamRef.current!)
+                        );
+                    });
+                } else {
+                    localStreamRef.current = stream;
+                }
+                
                 videoStreamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
@@ -179,6 +486,19 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                         p.name === username ? { ...p, videoOn: true } : p
                     )
                 );
+                
+                // Emit media state change
+                if (socketRef.current) {
+                    socketRef.current.emit("media-state-update", {
+                        participantId: participantId,
+                        audioOn: isMicOn,
+                        videoOn: true
+                    });
+                }
+
+                // After media is ready, connect to any pending peers
+                pendingPeers.current.forEach(id => createPeerConnection(id));
+                pendingPeers.current.clear();
             } catch (error) {
                 console.error("Error accessing camera:", error);
             }
@@ -198,6 +518,15 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                     p.name === username ? { ...p, audioOn: false } : p
                 )
             );
+            
+            // Emit media state change
+            if (socketRef.current) {
+                socketRef.current.emit("media-state-update", {
+                    participantId: participantId,
+                    audioOn: false,
+                    videoOn: isCameraOn
+                });
+            }
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -211,6 +540,15 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                         p.name === username ? { ...p, audioOn: true } : p
                     )
                 );
+                
+                // Emit media state change
+                if (socketRef.current) {
+                    socketRef.current.emit("media-state-update", {
+                        participantId: participantId,
+                        audioOn: true,
+                        videoOn: isCameraOn
+                    });
+                }
             } catch (error) {
                 console.error("Error accessing microphone:", error);
             }
@@ -220,46 +558,43 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     // Initialize camera and microphone on component mount
     useEffect(() => {
         const initializeMedia = async () => {
-            if (isCameraOn) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: true,
-                    });
-                    videoStreamRef.current = stream;
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
-                        videoRef.current.play();
-                        console.log("Video stream initialized successfully");
-                    }
-                } catch (error) {
-                    console.error("Error accessing camera:", error);
-                    setIsCameraOn(false);
-                    setParticipants((prev) =>
-                        prev.map((p) =>
-                            p.name === username ? { ...p, videoOn: false } : p
-                        )
-                    );
-                }
+            // Only request media if at least one is enabled
+            if (!isCameraOn && !isMicOn) {
+                return;
             }
-
-            if (isMicOn) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: true,
-                    });
-                    audioStreamRef.current = stream;
-                } catch (error) {
-                    console.error("Error accessing microphone:", error);
-                    setIsMicOn(false);
-                    setParticipants((prev) =>
-                        prev.map((p) =>
-                            p.name === username ? { ...p, audioOn: false } : p
-                        )
-                    );
+            try {
+                const constraints: MediaStreamConstraints = {
+                    video: isCameraOn,
+                    audio: isMicOn
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                localStreamRef.current = stream;
+                // Set video stream for local display
+                if (isCameraOn && videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play();
+                    videoStreamRef.current = stream;
                 }
+                // Set audio stream
+                if (isMicOn) {
+                    audioStreamRef.current = stream;
+                }
+                console.log("Media streams initialized successfully");
+
+                // After media is ready, connect to any pending peers
+                pendingPeers.current.forEach(id => createPeerConnection(id));
+                pendingPeers.current.clear();
+            } catch (error) {
+                console.error("Error accessing media devices:", error);
+                setIsCameraOn(false);
+                setIsMicOn(false);
+                setParticipants((prev) =>
+                    prev.map((p) =>
+                        p.name === username ? { ...p, videoOn: false, audioOn: false } : p
+                    )
+                );
             }
         };
-
         initializeMedia();
     }, []);
 
@@ -276,6 +611,12 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     // Cleanup function to stop all media streams when component unmounts
     useEffect(() => {
         return () => {
+            // Stop local stream
+            if (localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach((track) => track.stop());
+                localStreamRef.current = null;
+            }
+            
             // Stop video stream
             if (videoStreamRef.current) {
                 videoStreamRef.current
@@ -294,6 +635,12 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
+            
+            // Close all peer connections
+            peerConnectionsRef.current.forEach((connection) => {
+                connection.close();
+            });
+            peerConnectionsRef.current.clear();
         };
     }, []);
 
@@ -367,8 +714,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                 participants.length
                             )} max-h-[calc(100vh-100px)] aspect-video overflow-hidden w-[800px] h-[600px]`}
                         >
-                            {participants.map((participant, index) => (
-                                <div key={index} className="p-2 aspect-video">
+                            {participants.map((participant) => (
+                                <div key={participant.id} className="p-2 aspect-video">
                                     <div className="relative bg-gray-300 h-full w-full rounded-lg overflow-hidden">
                                         {participant.name === username ? (
                                             // Current user's video
@@ -405,15 +752,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                                     </div>
                                                 </div>
                                             </div>
-                                        ) : // Other participants' video
-                                        participant.videoOn ? (
-                                            <div className="w-full h-full relative overflow-hidden">
-                                                <video
-                                                    autoPlay
-                                                    playsInline
-                                                    className="w-full h-full rounded-lg object-cover"
-                                                />
-                                            </div>
+                                        ) : participant.videoOn ? (
+                                            <RemoteVideo stream={participant.stream} />
                                         ) : (
                                             <div className="flex flex-col items-center justify-center h-full">
                                                 <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
@@ -437,6 +777,19 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                             ) : (
                                                 <div className="bg-red-500 rounded-full p-1">
                                                     <MicOff className="h-3 w-3 text-white" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Video indicator */}
+                                        <div className="absolute bottom-2 left-2">
+                                            {participant.videoOn ? (
+                                                <div className="bg-green-500 rounded-full p-1">
+                                                    <Video className="h-3 w-3 text-white" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-red-500 rounded-full p-1">
+                                                    <X className="h-3 w-3 text-white" />
                                                 </div>
                                             )}
                                         </div>
@@ -645,31 +998,14 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                                         : "text-red-500"
                                                 }`}
                                             >
-                                                {participant.audioOn ? (
-                                                    <>
-                                                        <Mic className="h-3 w-3" />
-                                                        <span>Audio on</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <MicOff className="h-3 w-3" />
-                                                        <span>Audio off</span>
-                                                    </>
-                                                )}
+                                                <Mic className="h-3 w-3" />
+                                                <span>
+                                                    {participant.audioOn
+                                                        ? "Audio on"
+                                                        : "Audio off"}
+                                                </span>
                                             </div>
                                         </div>
-                                    </div>
-
-                                    {/* Status Icons */}
-                                    <div className="flex items-center gap-1">
-                                        {participant.videoOn && (
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        )}
-                                        {participant.audioOn ? (
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        ) : (
-                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                        )}
                                     </div>
                                 </div>
                             ))}
