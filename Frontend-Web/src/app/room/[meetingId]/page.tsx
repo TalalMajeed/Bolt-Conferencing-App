@@ -24,7 +24,8 @@ interface Message {
     text: string;
 }
 
-function MeetingRoom({ params }: { params: { meetingId: string } }) {
+function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
+    const resolvedParams = React.use(params);
     const searchParams = useSearchParams();
     const username = searchParams.get("name");
     const [isCameraOn, setIsCameraOn] = useState(
@@ -38,6 +39,8 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
     const [newMessage, setNewMessage] = useState("");
 
     const [activeSidebar, setActiveSidebar] = useState<string | null>(null);
+    const [roomName, setRoomName] = useState<string>("");
+    const [isLoading, setIsLoading] = useState<boolean>(true);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
@@ -46,6 +49,48 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
     const [participants, setParticipants] = useState<Participant[]>([
         { name: username, videoOn: isCameraOn, audioOn: isMicOn },
     ]);
+
+    // Fetch room details and update participants
+    useEffect(() => {
+        const fetchRoomDetails = async () => {
+            try {
+                console.log('Fetching room details for:', resolvedParams.meetingId);
+                const response = await fetch(`http://localhost:5000/api/rooms/${resolvedParams.meetingId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch room details');
+                }
+                
+                const roomData = await response.json();
+                console.log('Room data received:', roomData);
+                
+                // Update room name
+                setRoomName(roomData.name);
+                
+                // Map participants from API response
+                const mappedParticipants = roomData.participants.map((p: { id: string; username: string; joinedAt: string }) => ({
+                    name: p.username,
+                    videoOn: p.username === username ? isCameraOn : false,
+                    audioOn: p.username === username ? isMicOn : false,
+                }));
+                
+                setParticipants(mappedParticipants);
+                setIsLoading(false);
+                console.log('Participants updated:', mappedParticipants);
+            } catch (error) {
+                console.error('Error fetching room details:', error);
+                setIsLoading(false);
+                // Keep current participants if fetch fails
+            }
+        };
+
+        fetchRoomDetails();
+        
+        // Set up interval to refresh room details every 5 seconds
+        const interval = setInterval(fetchRoomDetails, 5000);
+        
+        return () => clearInterval(interval);
+    }, [resolvedParams.meetingId, username, isCameraOn, isMicOn]);
 
     // Function to get grid layout based on number of participants
     const getGridLayout = (participantCount: number) => {
@@ -261,104 +306,145 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
         setNewMessage("");
     };
 
+    const handleLeaveMeeting = async () => {
+        try {
+            console.log('Leaving meeting:', resolvedParams.meetingId);
+            const response = await fetch(`http://localhost:5000/api/rooms/${resolvedParams.meetingId}/leave`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    participantId: searchParams.get("participantId") || username
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to leave meeting');
+            }
+            
+            console.log('Successfully left meeting');
+            window.location.href = '/';
+        } catch (error) {
+            console.error('Error leaving meeting:', error);
+            alert(error instanceof Error ? error.message : 'Failed to leave meeting');
+        }
+    };
+
     return (
         <div className="h-screen bg-[#f8f9fa] font-sans flex flex-col">
             {/* Header */}
             <header className="flex items-center justify-between px-6 bg-white py-4 border-b border-gray-200">
-                <img
-                    src="/image.png"
-                    className="w-[120px] sm:w-[150px]"
-                    alt="Bolt Logo"
-                />
+                <div className="flex items-center gap-4">
+                    <img
+                        src="/image.png"
+                        className="w-[120px] sm:w-[150px]"
+                        alt="Bolt Logo"
+                    />
+                    {roomName && (
+                        <div className="border-l border-gray-300 pl-4">
+                            <h1 className="text-lg font-semibold text-gray-800">{roomName}</h1>
+                            <p className="text-sm text-gray-600">{participants.length} participant{participants.length !== 1 ? 's' : ''}</p>
+                        </div>
+                    )}
+                </div>
             </header>
 
             <div className="flex flex-1">
                 {/* Main Content */}
                 <main className="flex justify-center items-center py-4 mx-4 flex-1">
-                    <div
-                        className={`grid ${getGridLayout(
-                            participants.length
-                        )} gap-4 ${getVideoContainerSize(
-                            participants.length
-                        )} max-h-[calc(100vh-100px)] aspect-video overflow-hidden w-[800px] h-[600px]`}
-                    >
-                        {participants.map((participant, index) => (
-                            <div key={index} className="p-2 aspect-video">
-                                <div className="relative bg-gray-300 h-full w-full rounded-lg overflow-hidden">
-                                    {participant.name === username ? (
-                                        // Current user's video
-                                        <div className="w-full h-full relative overflow-hidden">
-                                            <video
-                                                ref={videoRef}
-                                                className="w-full h-full rounded-lg object-cover"
-                                                style={{
-                                                    display: isCameraOn
-                                                        ? "block"
-                                                        : "none",
-                                                }}
-                                                muted
-                                            />
-                                            <div
-                                                style={{
-                                                    display: isCameraOn
-                                                        ? "none"
-                                                        : "block",
-                                                }}
-                                                className="absolute inset-0 flex flex-col items-center justify-center"
-                                            >
-                                                <div className="flex flex-col items-center justify-center h-full">
-                                                    <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
-                                                        <span className="text-white text-xl font-bold">
-                                                            {participant.name
-                                                                ?.charAt(0)
-                                                                .toUpperCase()}
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                            <p className="mt-4 text-gray-600">Loading meeting room...</p>
+                        </div>
+                    ) : (
+                        <div
+                            className={`grid ${getGridLayout(
+                                participants.length
+                            )} gap-4 ${getVideoContainerSize(
+                                participants.length
+                            )} max-h-[calc(100vh-100px)] aspect-video overflow-hidden w-[800px] h-[600px]`}
+                        >
+                            {participants.map((participant, index) => (
+                                <div key={index} className="p-2 aspect-video">
+                                    <div className="relative bg-gray-300 h-full w-full rounded-lg overflow-hidden">
+                                        {participant.name === username ? (
+                                            // Current user's video
+                                            <div className="w-full h-full relative overflow-hidden">
+                                                <video
+                                                    ref={videoRef}
+                                                    className="w-full h-full rounded-lg object-cover"
+                                                    style={{
+                                                        display: isCameraOn
+                                                            ? "block"
+                                                            : "none",
+                                                    }}
+                                                    muted
+                                                />
+                                                <div
+                                                    style={{
+                                                        display: isCameraOn
+                                                            ? "none"
+                                                            : "block",
+                                                    }}
+                                                    className="absolute inset-0 flex flex-col items-center justify-center"
+                                                >
+                                                    <div className="flex flex-col items-center justify-center h-full">
+                                                        <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
+                                                            <span className="text-white text-xl font-bold">
+                                                                {participant.name
+                                                                    ?.charAt(0)
+                                                                    .toUpperCase()}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-gray-700 font-medium text-center">
+                                                            {participant.name}
                                                         </span>
                                                     </div>
-                                                    <span className="text-gray-700 font-medium text-center">
-                                                        {participant.name}
-                                                    </span>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ) : // Other participants' video
-                                    participant.videoOn ? (
-                                        <div className="w-full h-full relative overflow-hidden">
-                                            <video
-                                                autoPlay
-                                                playsInline
-                                                className="w-full h-full rounded-lg object-cover"
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full">
-                                            <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
-                                                <span className="text-white text-xl font-bold">
-                                                    {participant.name
-                                                        ?.charAt(0)
-                                                        .toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <span className="text-gray-700 font-medium text-center">
-                                                {participant.name}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {/* Audio indicator */}
-                                    <div className="absolute bottom-2 right-2">
-                                        {participant.audioOn ? (
-                                            <div className="bg-green-500 rounded-full p-1">
-                                                <Mic className="h-3 w-3 text-white" />
+                                        ) : // Other participants' video
+                                        participant.videoOn ? (
+                                            <div className="w-full h-full relative overflow-hidden">
+                                                <video
+                                                    autoPlay
+                                                    playsInline
+                                                    className="w-full h-full rounded-lg object-cover"
+                                                />
                                             </div>
                                         ) : (
-                                            <div className="bg-red-500 rounded-full p-1">
-                                                <MicOff className="h-3 w-3 text-white" />
+                                            <div className="flex flex-col items-center justify-center h-full">
+                                                <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mb-2">
+                                                    <span className="text-white text-xl font-bold">
+                                                        {participant.name
+                                                            ?.charAt(0)
+                                                            .toUpperCase()}
+                                                    </span>
+                                                </div>
+                                                <span className="text-gray-700 font-medium text-center">
+                                                    {participant.name}
+                                                </span>
                                             </div>
                                         )}
+                                        {/* Audio indicator */}
+                                        <div className="absolute bottom-2 right-2">
+                                            {participant.audioOn ? (
+                                                <div className="bg-green-500 rounded-full p-1">
+                                                    <Mic className="h-3 w-3 text-white" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-red-500 rounded-full p-1">
+                                                    <MicOff className="h-3 w-3 text-white" />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </main>
 
                 {/* Chat Sidebar */}
@@ -650,7 +736,7 @@ function MeetingRoom({ params }: { params: { meetingId: string } }) {
                     variant="destructive"
                     size="icon"
                     className="bg-red-600 hover:bg-red-700 text-white rounded-full"
-                    onClick={() => (window.location.href = "/")}
+                    onClick={handleLeaveMeeting}
                 >
                     <Phone className="h-4 w-4" />
                 </Button>
