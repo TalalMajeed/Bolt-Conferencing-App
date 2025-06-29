@@ -21,32 +21,41 @@ export default function JoinMeeting() {
         if (roomId.trim() && name.trim()) {
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
-            try{
-                const response = await fetch(`http://localhost:5000/api/rooms/${roomId}/join`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        username: name,
-                    }),
-                });
-                
+            try {
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL}/api/rooms/${roomId}/join`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            username: name,
+                        }),
+                    }
+                );
+
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to join meeting');
+                    throw new Error(
+                        errorData.error || "Failed to join meeting"
+                    );
                 }
-                
+
                 const data = await response.json();
-                console.log('Successfully joined meeting:', data);
-                
+                console.log("Successfully joined meeting:", data);
+
                 // Navigate to the room
                 const roomUrl = `/room/${roomId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}&participantId=${data.participantId}`;
-                console.log('Navigating to:', roomUrl);
+                console.log("Navigating to:", roomUrl);
                 router.push(roomUrl);
             } catch (error) {
                 console.error("Error joining meeting:", error);
-                alert(error instanceof Error ? error.message : 'Failed to join meeting. Please check the meeting ID and try again.');
+                alert(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to join meeting. Please check the meeting ID and try again."
+                );
             }
         } else {
             alert("Please enter both your name and meeting ID.");

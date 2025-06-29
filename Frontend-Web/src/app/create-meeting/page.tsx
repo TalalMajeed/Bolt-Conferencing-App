@@ -26,34 +26,41 @@ export default function CreateMeeting() {
 
         setIsCreating(true);
         try {
-            const response = await fetch("http://localhost:5000/api/rooms", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: meetingName,
-                    username: hostName,
-                }),
-            });
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/rooms`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        name: meetingName,
+                        username: hostName,
+                    }),
+                }
+            );
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to create meeting');
+                throw new Error(errorData.error || "Failed to create meeting");
             }
 
             const data = await response.json();
-            console.log('Successfully created meeting:', data);
-            
+            console.log("Successfully created meeting:", data);
+
             // Auto-join the created meeting
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
             const roomUrl = `/room/${data.roomId}?audio=${audioEnabled}&video=${videoEnabled}&name=${hostName}&participantId=${data.participantId}&host=true`;
-            console.log('Navigating to:', roomUrl);
+            console.log("Navigating to:", roomUrl);
             router.push(roomUrl);
         } catch (error) {
-            console.error('Error creating meeting:', error);
-            alert(error instanceof Error ? error.message : 'Failed to create meeting. Please try again.');
+            console.error("Error creating meeting:", error);
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to create meeting. Please try again."
+            );
         } finally {
             setIsCreating(false);
         }
