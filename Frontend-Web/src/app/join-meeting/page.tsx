@@ -6,8 +6,8 @@ import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-export default function Meeting() {
-    const [meetingId, setMeetingId] = useState("");
+export default function JoinMeeting() {
+    const [roomId, setRoomId] = useState("");
     const [name, setName] = useState("");
     const [isCameraOn, setIsCameraOn] = useState(false);
     const [isMicOn, setIsMicOn] = useState(false);
@@ -17,13 +17,37 @@ export default function Meeting() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
 
-    const handleJoin = () => {
-        if (meetingId.trim() && name.trim()) {
+    const handleJoin = async () => {
+        if (roomId.trim() && name.trim()) {
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
-            router.push(
-                `/room/${meetingId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}`
-            );
+            try{
+                const response = await fetch(`http://localhost:5000/api/rooms/${roomId}/join`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        username: name,
+                    }),
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to join meeting');
+                }
+                
+                const data = await response.json();
+                console.log('Successfully joined meeting:', data);
+                
+                // Navigate to the room
+                const roomUrl = `/room/${roomId}?audio=${audioEnabled}&video=${videoEnabled}&name=${name}&participantId=${data.participantId}`;
+                console.log('Navigating to:', roomUrl);
+                router.push(roomUrl);
+            } catch (error) {
+                console.error("Error joining meeting:", error);
+                alert(error instanceof Error ? error.message : 'Failed to join meeting. Please check the meeting ID and try again.');
+            }
         } else {
             alert("Please enter both your name and meeting ID.");
         }
@@ -172,9 +196,9 @@ export default function Meeting() {
                         />
                         <Input
                             className="w-full py-3 px-4 rounded-lg mb-6"
-                            placeholder="Enter Meeting ID"
-                            value={meetingId}
-                            onChange={(e) => setMeetingId(e.target.value)}
+                            placeholder="Enter Room ID"
+                            value={roomId}
+                            onChange={(e) => setRoomId(e.target.value)}
                         />
                         <Button
                             size="lg"
