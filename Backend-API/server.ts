@@ -261,6 +261,12 @@ app.post("/api/rooms/:roomId/leave", async (req, res) => {
             console.log(
                 `User ${removedParticipant.username} left room: ${roomId}`
             );
+            
+            // Notify remaining participants via socket
+            io.to(roomId).emit("user-left", {
+                participantId: removedParticipant.id,
+                username: removedParticipant.username,
+            });
         }
 
         res.json({ message: "Successfully left the room" });
@@ -460,6 +466,20 @@ io.on("connection", (socket) => {
         }
     });
 
+    // Chat message handling
+    socket.on("chat-message", (data: { roomId: string; sender: string; text: string }) => {
+        const { roomId, sender, text } = data;
+        
+        // Broadcast the message to all participants in the room
+        io.to(roomId).emit("chat-message", {
+            sender,
+            text,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`Chat message from ${sender} in room ${roomId}: ${text}`);
+    });
+
     // Handle disconnection
     socket.on("disconnect", async () => {
         console.log(`User disconnected: ${socket.id}`);
@@ -492,8 +512,8 @@ io.on("connection", (socket) => {
                         JSON.stringify(room)
                     );
 
-                    // Notify remaining participants
-                    socket.to(roomId).emit("user-left", {
+                    // Notify remaining participants using io instead of socket
+                    io.to(roomId).emit("user-left", {
                         participantId: removedParticipant.id,
                         username: removedParticipant.username,
                     });
