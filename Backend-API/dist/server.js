@@ -348,6 +348,17 @@ io.on("connection", (socket) => {
             socket.emit("media-states-response", { mediaStates });
         }
     }));
+    // Chat message handling
+    socket.on("chat-message", (data) => {
+        const { roomId, sender, text } = data;
+        // Broadcast the message to all participants in the room
+        io.to(roomId).emit("chat-message", {
+            sender,
+            text,
+            timestamp: new Date().toISOString()
+        });
+        console.log(`Chat message from ${sender} in room ${roomId}: ${text}`);
+    });
     // Handle disconnection
     socket.on("disconnect", () => __awaiter(void 0, void 0, void 0, function* () {
         console.log(`User disconnected: ${socket.id}`);
