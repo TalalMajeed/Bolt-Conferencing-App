@@ -141,7 +141,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                 })
             );
 
-            // PATCH: Preserve runtime fields like stream
+            // Completely replace participants to ensure consistency with server state
+            // Only preserve streams for participants that still exist
             setParticipants((prev: Participant[]) => {
                 const prevById = new Map(
                     prev.map((p: Participant) => [p.id, p])
@@ -284,10 +285,9 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             peerConnectionsRef.current.delete(participantId);
         }
 
+        // Remove the participant from the state completely
         setParticipants((prev) =>
-            prev.map((p) =>
-                p.id === participantId ? { ...p, stream: undefined } : p
-            )
+            prev.filter((p) => p.id !== participantId)
         );
     };
 
@@ -361,11 +361,12 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             "user-left",
             (data: { participantId: string; username: string }) => {
                 console.log("User left:", data);
-                // Cleanup peer connection
+                // Cleanup peer connection and remove participant
                 cleanupPeerConnection(data.participantId);
-                setParticipants((prev) =>
-                    prev.filter((p) => p.id !== data.participantId)
-                );
+                // Also refresh room details to ensure consistency after a small delay
+                setTimeout(() => {
+                    fetchRoomDetails();
+                }, 100);
             }
         );
 
