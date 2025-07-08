@@ -5,7 +5,6 @@ import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
-
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
             {/* Header */}
@@ -24,16 +23,7 @@ export default function Home() {
                         it is a team meeting or a virtual hangout, Bolt makes
                         video conferencing simple and engaging.
                     </p>
-                    <Link href="/join-meeting">
-                        <Button
-                            size="lg"
-                            className="mt-6 bg-[#262626] hover:bg-[#404040] text-white rounded-full px-8 py-3 text-lg"
-                        >
-                            <Video className="mr-2 h-5 w-5" />
-                            Join a Meeting
-                        </Button>
-                    </Link>
-                    <Link href="/create-meeting">
+                    <Link href="/create">
                         <Button
                             size="lg"
                             className="mt-6 bg-[#262626] hover:bg-[#404040] text-white rounded-full px-8 py-3 text-lg"

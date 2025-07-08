@@ -101,7 +101,7 @@ app.post("/api/rooms", async (req, res) => {
                 .json({ error: "Room name and username are required" });
         }
 
-        const roomId = uuidv4();
+        const roomId = await generateUniqueRoomId();
         const participantId = uuidv4();
         const socketId = req.headers["x-socket-id"] as string;
 
@@ -261,7 +261,7 @@ app.post("/api/rooms/:roomId/leave", async (req, res) => {
             console.log(
                 `User ${removedParticipant.username} left room: ${roomId}`
             );
-            
+
             // Notify remaining participants via socket
             io.to(roomId).emit("user-left", {
                 participantId: removedParticipant.id,
@@ -327,7 +327,7 @@ app.get("/api/rooms/:roomId", async (req, res) => {
                 id: p.id,
                 username: p.username,
                 joinedAt: p.joinedAt,
-                mediaState: p.mediaState || { audioOn: false, videoOn: false }
+                mediaState: p.mediaState || { audioOn: false, videoOn: false },
             })),
             createdAt: room.createdAt,
             lastActivity: room.lastActivity,
@@ -345,7 +345,11 @@ io.on("connection", (socket) => {
     // Join a room
     socket.on(
         "join-room",
-        async (data: { roomId: string; participantId: string; initialMediaState?: { audioOn: boolean; videoOn: boolean } }) => {
+        async (data: {
+            roomId: string;
+            participantId: string;
+            initialMediaState?: { audioOn: boolean; videoOn: boolean };
+        }) => {
             const { roomId, participantId, initialMediaState } = data;
 
             socket.join(roomId);
@@ -359,12 +363,12 @@ io.on("connection", (socket) => {
                 );
                 if (participant) {
                     participant.socketId = socket.id;
-                    
+
                     // Initialize media state if provided
                     if (initialMediaState) {
                         participant.mediaState = initialMediaState;
                     }
-                    
+
                     activeRooms.set(roomId, room);
 
                     // Update in Redis
@@ -373,14 +377,14 @@ io.on("connection", (socket) => {
                         3600,
                         JSON.stringify(room)
                     );
-                    
+
                     // Notify other participants about the new user's media state
                     if (initialMediaState) {
                         socket.to(roomId).emit("media-state-changed", {
                             participantId,
                             audioOn: initialMediaState.audioOn,
                             videoOn: initialMediaState.videoOn,
-                            username: participant.username
+                            username: participant.username,
                         });
                     }
                 }
@@ -400,14 +404,16 @@ io.on("connection", (socket) => {
 
         // Find the target participant's socket ID
         for (const [roomId, room] of activeRooms.entries()) {
-            const targetParticipant = room.participants.find(p => p.id === to);
+            const targetParticipant = room.participants.find(
+                (p) => p.id === to
+            );
             if (targetParticipant && targetParticipant.socketId) {
                 // Forward the signal to the specific participant
                 io.to(targetParticipant.socketId).emit("webrtc-signal", {
                     type,
                     data: signalData,
                     from: data.from,
-                    to: data.to
+                    to: data.to,
                 });
                 break;
             }
@@ -417,31 +423,35 @@ io.on("connection", (socket) => {
     // Media state synchronization
     socket.on("media-state-update", async (data: MediaStateUpdate) => {
         const { participantId, audioOn, videoOn } = data;
-        
+
         // Find the room containing this participant
         for (const [roomId, room] of activeRooms.entries()) {
-            const participant = room.participants.find(p => p.id === participantId);
+            const participant = room.participants.find(
+                (p) => p.id === participantId
+            );
             if (participant) {
                 // Update participant's media state
                 participant.mediaState = { audioOn, videoOn };
                 activeRooms.set(roomId, room);
-                
+
                 // Update in Redis
                 await redisClient.setEx(
                     `${ROOM_PREFIX}${roomId}`,
                     3600,
                     JSON.stringify(room)
                 );
-                
+
                 // Broadcast to all other participants in the room
                 socket.to(roomId).emit("media-state-changed", {
                     participantId,
                     audioOn,
                     videoOn,
-                    username: participant.username
+                    username: participant.username,
                 });
-                
-                console.log(`Media state updated for ${participant.username}: audio=${audioOn}, video=${videoOn}`);
+
+                console.log(
+                    `Media state updated for ${participant.username}: audio=${audioOn}, video=${videoOn}`
+                );
                 break;
             }
         }
@@ -451,34 +461,39 @@ io.on("connection", (socket) => {
     socket.on("request-media-states", async (data: { roomId: string }) => {
         const { roomId } = data;
         const room = activeRooms.get(roomId);
-        
+
         if (room) {
             const mediaStates = room.participants
-                .filter(p => p.mediaState)
-                .map(p => ({
+                .filter((p) => p.mediaState)
+                .map((p) => ({
                     participantId: p.id,
                     username: p.username,
                     audioOn: p.mediaState!.audioOn,
-                    videoOn: p.mediaState!.videoOn
+                    videoOn: p.mediaState!.videoOn,
                 }));
-            
+
             socket.emit("media-states-response", { mediaStates });
         }
     });
 
     // Chat message handling
-    socket.on("chat-message", (data: { roomId: string; sender: string; text: string }) => {
-        const { roomId, sender, text } = data;
-        
-        // Broadcast the message to all participants in the room
-        io.to(roomId).emit("chat-message", {
-            sender,
-            text,
-            timestamp: new Date().toISOString()
-        });
-        
-        console.log(`Chat message from ${sender} in room ${roomId}: ${text}`);
-    });
+    socket.on(
+        "chat-message",
+        (data: { roomId: string; sender: string; text: string }) => {
+            const { roomId, sender, text } = data;
+
+            // Broadcast the message to all participants in the room
+            io.to(roomId).emit("chat-message", {
+                sender,
+                text,
+                timestamp: new Date().toISOString(),
+            });
+
+            console.log(
+                `Chat message from ${sender} in room ${roomId}: ${text}`
+            );
+        }
+    );
 
     // Handle disconnection
     socket.on("disconnect", async () => {
@@ -525,6 +540,45 @@ io.on("connection", (socket) => {
 });
 
 // Helper functions
+
+// Generate a random room ID in format: xxx-xxx-xxx
+function generateRandomRoomId(): string {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    const generateSegment = () => {
+        return Array.from(
+            { length: 3 },
+            () => chars[Math.floor(Math.random() * chars.length)]
+        ).join("");
+    };
+
+    return `${generateSegment()}-${generateSegment()}-${generateSegment()}`;
+}
+
+// Generate a unique room ID that doesn't exist in Redis
+async function generateUniqueRoomId(): Promise<string> {
+    let roomId: string;
+    let attempts = 0;
+    const maxAttempts = 100; // Prevent infinite loops
+
+    do {
+        roomId = generateRandomRoomId();
+        attempts++;
+
+        // Check if room exists in Redis
+        const exists = await redisClient.exists(`${ROOM_PREFIX}${roomId}`);
+
+        if (!exists) {
+            return roomId;
+        }
+
+        // If we've tried too many times, throw an error
+        if (attempts >= maxAttempts) {
+            throw new Error(
+                "Unable to generate unique room ID after maximum attempts"
+            );
+        }
+    } while (true);
+}
 
 async function deleteRoom(roomId: string) {
     try {
