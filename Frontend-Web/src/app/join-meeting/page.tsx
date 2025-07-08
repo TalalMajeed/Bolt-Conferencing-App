@@ -21,10 +21,12 @@ export default function JoinMeeting() {
         if (roomId.trim() && name.trim()) {
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
-            console.log(`process.env.NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
+            console.log(
+                `process.env.NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`
+            );
             try {
                 const response = await fetch(
-                    `http://localhost:5000/api/rooms/${roomId}/join`,
+                    `${process.env.NEXT_PUBLIC_API_URL}/api/rooms/${roomId}/join`,
                     {
                         method: "POST",
                         headers: {
