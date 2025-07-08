@@ -1,3 +1,4 @@
+.env.local
 /Frontend-Web/node_modules
 /Frontend-Web/.pnp
 /Frontend-Web/.pnp.*

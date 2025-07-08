@@ -26,6 +26,7 @@ interface Participant {
 interface Message {
     sender: string | null;
     text: string;
+    timestamp?: string;
 }
 
 function RemoteVideo({ stream }: { stream?: MediaStream }) {
@@ -64,6 +65,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState("");
+    const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     const [activeSidebar, setActiveSidebar] = useState<string | null>(null);
     const [roomName, setRoomName] = useState<string>("");
@@ -72,6 +75,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
     const videoStreamRef = useRef<MediaStream | null>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
 
     const [participants, setParticipants] = useState<Participant[]>([
         {
@@ -141,7 +145,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                 })
             );
 
-            // PATCH: Preserve runtime fields like stream
+            // Completely replace participants to ensure consistency with server state
+            // Only preserve streams for participants that still exist
             setParticipants((prev: Participant[]) => {
                 const prevById = new Map(
                     prev.map((p: Participant) => [p.id, p])
@@ -284,10 +289,9 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             peerConnectionsRef.current.delete(participantId);
         }
 
+        // Remove the participant from the state completely
         setParticipants((prev) =>
-            prev.map((p) =>
-                p.id === participantId ? { ...p, stream: undefined } : p
-            )
+            prev.filter((p) => p.id !== participantId)
         );
     };
 
@@ -361,11 +365,12 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             "user-left",
             (data: { participantId: string; username: string }) => {
                 console.log("User left:", data);
-                // Cleanup peer connection
+                // Cleanup peer connection and remove participant
                 cleanupPeerConnection(data.participantId);
-                setParticipants((prev) =>
-                    prev.filter((p) => p.id !== data.participantId)
-                );
+                // Also refresh room details to ensure consistency after a small delay
+                setTimeout(() => {
+                    fetchRoomDetails();
+                }, 100);
             }
         );
 
@@ -447,6 +452,21 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             }
         );
 
+        // Listen for chat messages from other participants
+        socket.on("chat-message", (data: { sender: string; text: string; timestamp: string }) => {
+            console.log("Received chat message:", data);
+            setMessages((prev) => [
+                ...prev,
+                { sender: data.sender, text: data.text, timestamp: data.timestamp }
+            ]);
+            
+            // Set unread status if message is from another participant and chat is not open
+            if (data.sender !== username && activeSidebar !== "chat") {
+                setHasUnreadMessages(true);
+                setUnreadCount((prev) => prev + 1);
+            }
+        });
+
         // Cleanup on unmount
         return () => {
             if (socket) {
@@ -454,6 +474,13 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             }
         };
     }, [resolvedParams.meetingId, participantId]);
+
+    // Auto-scroll to bottom when new messages are added
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    }, [messages]);
 
     // Function to get grid layout based on number of participants
     const getGridLayout = (participantCount: number) => {
@@ -503,6 +530,12 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
 
     const toggleSidebar = (type: string) => {
         setActiveSidebar((prev) => (prev === type ? null : type));
+        
+        // Clear unread messages when chat is opened
+        if (type === "chat" && activeSidebar !== "chat") {
+            setHasUnreadMessages(false);
+            setUnreadCount(0);
+        }
     };
 
     const toggleCamera = async () => {
@@ -735,10 +768,16 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
 
     const sendMessage = () => {
         if (newMessage.trim() === "") return;
-        setMessages((prev) => [
-            ...prev,
-            { sender: username, text: newMessage },
-        ]);
+        
+        // Broadcast message to all participants in the room (including self)
+        if (socketRef.current) {
+            socketRef.current.emit("chat-message", {
+                roomId: resolvedParams.meetingId,
+                sender: username,
+                text: newMessage,
+            });
+        }
+        
         setNewMessage("");
     };
 
@@ -931,7 +970,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
-                        <div className="flex-1 p-4 overflow-y-auto">
+                        <div className="flex-1 p-4 overflow-y-auto" ref={chatContainerRef}>
                             {messages.length > 0 ? (
                                 messages.map((message, index) => (
                                     <div
@@ -1160,10 +1199,15 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                         activeSidebar === "chat"
                             ? "bg-blue-600 hover:bg-blue-700"
                             : "bg-gray-600 hover:bg-gray-700"
-                    } text-white rounded-full`}
+                    } text-white rounded-full relative`}
                     onClick={() => toggleSidebar("chat")}
                 >
                     <MessageSquare className="h-4 w-4" />
+                    {hasUnreadMessages && (
+                        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white animate-pulse">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                        </div>
+                    )}
                 </Button>
                 <Button
                     variant="default"

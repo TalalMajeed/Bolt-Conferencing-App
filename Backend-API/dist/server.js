@@ -187,6 +187,11 @@ app.post("/api/rooms/:roomId/leave", (req, res) => __awaiter(void 0, void 0, voi
             yield redisClient.setEx(`${ROOM_PREFIX}${roomId}`, 3600, JSON.stringify(room));
             activeRooms.set(roomId, room);
             console.log(`User ${removedParticipant.username} left room: ${roomId}`);
+            // Notify remaining participants via socket
+            io.to(roomId).emit("user-left", {
+                participantId: removedParticipant.id,
+                username: removedParticipant.username,
+            });
         }
         res.json({ message: "Successfully left the room" });
     }
@@ -236,6 +241,7 @@ app.get("/api/rooms/:roomId", (req, res) => __awaiter(void 0, void 0, void 0, fu
                 id: p.id,
                 username: p.username,
                 joinedAt: p.joinedAt,
+                mediaState: p.mediaState || { audioOn: false, videoOn: false }
             })),
             createdAt: room.createdAt,
             lastActivity: room.lastActivity,
@@ -251,7 +257,7 @@ io.on("connection", (socket) => {
     console.log(`User connected: ${socket.id}`);
     // Join a room
     socket.on("join-room", (data) => __awaiter(void 0, void 0, void 0, function* () {
-        const { roomId, participantId } = data;
+        const { roomId, participantId, initialMediaState } = data;
         socket.join(roomId);
         console.log(`Socket ${socket.id} joined room: ${roomId}`);
         // Update socket ID for participant
@@ -260,9 +266,22 @@ io.on("connection", (socket) => {
             const participant = room.participants.find((p) => p.id === participantId);
             if (participant) {
                 participant.socketId = socket.id;
+                // Initialize media state if provided
+                if (initialMediaState) {
+                    participant.mediaState = initialMediaState;
+                }
                 activeRooms.set(roomId, room);
                 // Update in Redis
                 yield redisClient.setEx(`${ROOM_PREFIX}${roomId}`, 3600, JSON.stringify(room));
+                // Notify other participants about the new user's media state
+                if (initialMediaState) {
+                    socket.to(roomId).emit("media-state-changed", {
+                        participantId,
+                        audioOn: initialMediaState.audioOn,
+                        videoOn: initialMediaState.videoOn,
+                        username: participant.username
+                    });
+                }
             }
         }
         // Notify other participants in the room
@@ -274,12 +293,71 @@ io.on("connection", (socket) => {
     // WebRTC signaling
     socket.on("webrtc-signal", (data) => {
         const { to, type, data: signalData } = data;
-        // Forward the signal to the target participant
-        socket.to(data.to).emit("webrtc-signal", {
-            type,
-            data: signalData,
-            from: data.from,
+        // Find the target participant's socket ID
+        for (const [roomId, room] of activeRooms.entries()) {
+            const targetParticipant = room.participants.find(p => p.id === to);
+            if (targetParticipant && targetParticipant.socketId) {
+                // Forward the signal to the specific participant
+                io.to(targetParticipant.socketId).emit("webrtc-signal", {
+                    type,
+                    data: signalData,
+                    from: data.from,
+                    to: data.to
+                });
+                break;
+            }
+        }
+    });
+    // Media state synchronization
+    socket.on("media-state-update", (data) => __awaiter(void 0, void 0, void 0, function* () {
+        const { participantId, audioOn, videoOn } = data;
+        // Find the room containing this participant
+        for (const [roomId, room] of activeRooms.entries()) {
+            const participant = room.participants.find(p => p.id === participantId);
+            if (participant) {
+                // Update participant's media state
+                participant.mediaState = { audioOn, videoOn };
+                activeRooms.set(roomId, room);
+                // Update in Redis
+                yield redisClient.setEx(`${ROOM_PREFIX}${roomId}`, 3600, JSON.stringify(room));
+                // Broadcast to all other participants in the room
+                socket.to(roomId).emit("media-state-changed", {
+                    participantId,
+                    audioOn,
+                    videoOn,
+                    username: participant.username
+                });
+                console.log(`Media state updated for ${participant.username}: audio=${audioOn}, video=${videoOn}`);
+                break;
+            }
+        }
+    }));
+    // Request current media states from all participants in room
+    socket.on("request-media-states", (data) => __awaiter(void 0, void 0, void 0, function* () {
+        const { roomId } = data;
+        const room = activeRooms.get(roomId);
+        if (room) {
+            const mediaStates = room.participants
+                .filter(p => p.mediaState)
+                .map(p => ({
+                participantId: p.id,
+                username: p.username,
+                audioOn: p.mediaState.audioOn,
+                videoOn: p.mediaState.videoOn
+            }));
+            socket.emit("media-states-response", { mediaStates });
+        }
+    }));
+    // Chat message handling
+    socket.on("chat-message", (data) => {
+        const { roomId, sender, text } = data;
+        // Broadcast the message to all participants in the room
+        io.to(roomId).emit("chat-message", {
+            sender,
+            text,
+            timestamp: new Date().toISOString()
         });
+        console.log(`Chat message from ${sender} in room ${roomId}: ${text}`);
     });
     // Handle disconnection
     socket.on("disconnect", () => __awaiter(void 0, void 0, void 0, function* () {
@@ -299,8 +377,8 @@ io.on("connection", (socket) => {
                     // Update room
                     activeRooms.set(roomId, room);
                     yield redisClient.setEx(`${ROOM_PREFIX}${roomId}`, 3600, JSON.stringify(room));
-                    // Notify remaining participants
-                    socket.to(roomId).emit("user-left", {
+                    // Notify remaining participants using io instead of socket
+                    io.to(roomId).emit("user-left", {
                         participantId: removedParticipant.id,
                         username: removedParticipant.username,
                     });
