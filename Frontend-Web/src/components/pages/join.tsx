@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/toast";
 
-export default function Join() {
-    const [roomId, setRoomId] = useState("");
+export default function Join({ roomId }: { roomId: string }) {
     const [name, setName] = useState("");
     const [isCameraOn, setIsCameraOn] = useState(false);
     const [isMicOn, setIsMicOn] = useState(false);
@@ -16,6 +16,7 @@ export default function Join() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
+    const { toast } = useToast();
 
     const handleJoin = async () => {
         if (roomId.trim() && name.trim()) {
@@ -54,14 +55,21 @@ export default function Join() {
                 router.push(roomUrl);
             } catch (error) {
                 console.error("Error joining meeting:", error);
-                alert(
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to join meeting. Please check the meeting ID and try again."
-                );
+                toast({
+                    title: "Error",
+                    description:
+                        error instanceof Error
+                            ? error.message
+                            : "Failed to join meeting. Please check the meeting ID and try again.",
+                    variant: "destructive",
+                });
             }
         } else {
-            alert("Please enter both your name and meeting ID.");
+            toast({
+                title: "Missing Information",
+                description: "Please enter both your name and meeting ID.",
+                variant: "destructive",
+            });
         }
     };
 
@@ -205,12 +213,6 @@ export default function Join() {
                             placeholder="Enter Your Name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                        />
-                        <Input
-                            className="w-full py-3 px-4 rounded-lg mb-6"
-                            placeholder="Enter Room ID"
-                            value={roomId}
-                            onChange={(e) => setRoomId(e.target.value)}
                         />
                         <Button
                             size="lg"

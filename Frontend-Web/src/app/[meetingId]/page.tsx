@@ -76,5 +76,5 @@ export default function MeetingPage() {
         );
     }
 
-    return roomExists ? <Join /> : <Error />;
+    return roomExists ? <Join roomId={meetingId} /> : <Error />;
 }

@@ -13,6 +13,7 @@ import {
 import React, { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import { useToast } from "@/hooks/toast";
 
 interface Participant {
     id: string;
@@ -89,6 +90,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     // Socket.IO connection
     const socketRef = useRef<Socket | null>(null);
     const participantId = searchParams.get("participantId") || username || "";
+    const { toast } = useToast();
 
     // WebRTC configuration
     const rtcConfiguration: RTCConfiguration = {
@@ -813,11 +815,14 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             window.location.href = "/";
         } catch (error) {
             console.error("Error leaving meeting:", error);
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to leave meeting"
-            );
+            toast({
+                title: "Error",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to leave meeting",
+                variant: "destructive",
+            });
         }
     };
 

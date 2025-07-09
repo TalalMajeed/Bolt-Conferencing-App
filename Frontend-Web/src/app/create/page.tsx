@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/toast";
 
 export default function CreateMeeting() {
     const [meetingName, setMeetingName] = useState("");
@@ -16,10 +17,15 @@ export default function CreateMeeting() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
+    const { toast } = useToast();
 
     const createMeeting = async () => {
         if (!meetingName.trim() || !hostName.trim()) {
-            alert("Please enter both meeting name and your name.");
+            toast({
+                title: "Missing Information",
+                description: "Please enter both meeting name and your name.",
+                variant: "destructive",
+            });
             return;
         }
 
@@ -54,11 +60,14 @@ export default function CreateMeeting() {
             router.push(roomUrl);
         } catch (error) {
             console.error("Error creating meeting:", error);
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to create meeting. Please try again."
-            );
+            toast({
+                title: "Error",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to create meeting. Please try again.",
+                variant: "destructive",
+            });
         }
     };
 
