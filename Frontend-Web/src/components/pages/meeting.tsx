@@ -13,6 +13,7 @@ import {
 import React, { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import { useToast } from "@/hooks/toast";
 
 interface Participant {
     id: string;
@@ -89,6 +90,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     // Socket.IO connection
     const socketRef = useRef<Socket | null>(null);
     const participantId = searchParams.get("participantId") || username || "";
+    const { toast } = useToast();
 
     // WebRTC configuration
     const rtcConfiguration: RTCConfiguration = {
@@ -290,9 +292,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
         }
 
         // Remove the participant from the state completely
-        setParticipants((prev) =>
-            prev.filter((p) => p.id !== participantId)
-        );
+        setParticipants((prev) => prev.filter((p) => p.id !== participantId));
     };
 
     // Initial fetch only (no polling)
@@ -453,19 +453,26 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
         );
 
         // Listen for chat messages from other participants
-        socket.on("chat-message", (data: { sender: string; text: string; timestamp: string }) => {
-            console.log("Received chat message:", data);
-            setMessages((prev) => [
-                ...prev,
-                { sender: data.sender, text: data.text, timestamp: data.timestamp }
-            ]);
-            
-            // Set unread status if message is from another participant and chat is not open
-            if (data.sender !== username && activeSidebar !== "chat") {
-                setHasUnreadMessages(true);
-                setUnreadCount((prev) => prev + 1);
+        socket.on(
+            "chat-message",
+            (data: { sender: string; text: string; timestamp: string }) => {
+                console.log("Received chat message:", data);
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        sender: data.sender,
+                        text: data.text,
+                        timestamp: data.timestamp,
+                    },
+                ]);
+
+                // Set unread status if message is from another participant and chat is not open
+                if (data.sender !== username && activeSidebar !== "chat") {
+                    setHasUnreadMessages(true);
+                    setUnreadCount((prev) => prev + 1);
+                }
             }
-        });
+        );
 
         // Cleanup on unmount
         return () => {
@@ -478,7 +485,8 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
     // Auto-scroll to bottom when new messages are added
     useEffect(() => {
         if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+            chatContainerRef.current.scrollTop =
+                chatContainerRef.current.scrollHeight;
         }
     }, [messages]);
 
@@ -530,7 +538,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
 
     const toggleSidebar = (type: string) => {
         setActiveSidebar((prev) => (prev === type ? null : type));
-        
+
         // Clear unread messages when chat is opened
         if (type === "chat" && activeSidebar !== "chat") {
             setHasUnreadMessages(false);
@@ -768,7 +776,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
 
     const sendMessage = () => {
         if (newMessage.trim() === "") return;
-        
+
         // Broadcast message to all participants in the room (including self)
         if (socketRef.current) {
             socketRef.current.emit("chat-message", {
@@ -777,7 +785,7 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                 text: newMessage,
             });
         }
-        
+
         setNewMessage("");
     };
 
@@ -807,11 +815,14 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
             window.location.href = "/";
         } catch (error) {
             console.error("Error leaving meeting:", error);
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to leave meeting"
-            );
+            toast({
+                title: "Error",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to leave meeting",
+                variant: "destructive",
+            });
         }
     };
 
@@ -970,7 +981,10 @@ function MeetingRoom({ params }: { params: Promise<{ meetingId: string }> }) {
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
-                        <div className="flex-1 p-4 overflow-y-auto" ref={chatContainerRef}>
+                        <div
+                            className="flex-1 p-4 overflow-y-auto"
+                            ref={chatContainerRef}
+                        >
                             {messages.length > 0 ? (
                                 messages.map((message, index) => (
                                     <div

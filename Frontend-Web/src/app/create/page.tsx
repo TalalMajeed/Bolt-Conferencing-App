@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Video, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/toast";
 
 export default function CreateMeeting() {
     const [meetingName, setMeetingName] = useState("");
@@ -13,18 +14,21 @@ export default function CreateMeeting() {
     const [isMicOn, setIsMicOn] = useState(false);
     const [isCameraAllowed, setIsCameraAllowed] = useState(true);
     const [isMicAllowed, setIsMicAllowed] = useState(true);
-    const [isCreating, setIsCreating] = useState(false);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
+    const { toast } = useToast();
 
     const createMeeting = async () => {
         if (!meetingName.trim() || !hostName.trim()) {
-            alert("Please enter both meeting name and your name.");
+            toast({
+                title: "Missing Information",
+                description: "Please enter both meeting name and your name.",
+                variant: "destructive",
+            });
             return;
         }
 
-        setIsCreating(true);
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/api/rooms`,
@@ -51,18 +55,19 @@ export default function CreateMeeting() {
             // Auto-join the created meeting
             const audioEnabled = isMicOn;
             const videoEnabled = isCameraOn;
-            const roomUrl = `/room/${data.roomId}?audio=${audioEnabled}&video=${videoEnabled}&name=${hostName}&participantId=${data.participantId}&host=true`;
+            const roomUrl = `/${data.roomId}?audio=${audioEnabled}&video=${videoEnabled}&name=${hostName}&participantId=${data.participantId}&host=true`;
             console.log("Navigating to:", roomUrl);
             router.push(roomUrl);
         } catch (error) {
             console.error("Error creating meeting:", error);
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to create meeting. Please try again."
-            );
-        } finally {
-            setIsCreating(false);
+            toast({
+                title: "Error",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to create meeting. Please try again.",
+                variant: "destructive",
+            });
         }
     };
 
@@ -218,10 +223,9 @@ export default function CreateMeeting() {
                             variant="default"
                             className="bg-[#262626] hover:bg-[#404040] text-white rounded-full px-8 py-3"
                             onClick={createMeeting}
-                            disabled={isCreating}
                         >
                             <Video className="mr-2 h-5 w-5" />
-                            {isCreating ? "Creating..." : "Create Meeting"}
+                            Create Meeting
                         </Button>
                     </div>
                 </div>
