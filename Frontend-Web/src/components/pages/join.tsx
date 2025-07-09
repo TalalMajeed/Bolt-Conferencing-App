@@ -195,7 +195,7 @@ export default function Join() {
                     {/* Meeting Join Section */}
                     <div className="flex flex-col items-center justify-center max-w-[400px] flex-1">
                         <h2 className="text-xl md:text-2xl mb-4 font-semibold">
-                            Join a Meeting
+                            Join Meeting
                         </h2>
                         <p className="text-[#1b1d1f] text-base md:text-lg mb-6 md:text-left">
                             Please enter your name & meeting ID to join.
